@@ -5,10 +5,10 @@ const { authenticate, isOwner, authorize } = require('../middleware/auth');
 
 /**
  * @route   GET /api/users
- * @desc    Get all users (Owner only)
- * @access  Private (Owner only)
+ * @desc    Get all users (Owner or Employee)
+ * @access  Private (Owner or Employee)
  */
-router.get('/', authenticate, isOwner, async (req, res) => {
+router.get('/', authenticate, authorize('owner', 'employee'), async (req, res) => {
   try {
     const { role, subRole, page = 1, limit = 10, search } = req.query;
 
@@ -294,17 +294,30 @@ router.post('/register-client', authenticate, authorize('owner', 'employee'), as
  */
 router.put('/profile', authenticate, async (req, res) => {
   try {
-    const { firstName, lastName, phone } = req.body;
+    const { firstName, lastName, phone, email, address, profileImage } = req.body;
 
     const updates = {};
     if (firstName) updates.firstName = firstName;
     if (lastName) updates.lastName = lastName;
     if (phone) updates.phone = phone;
+    if (email) {
+      // Check if email is already taken by another user
+      const existingUser = await User.findOne({ email: email.toLowerCase(), _id: { $ne: req.user._id } });
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email is already in use'
+        });
+      }
+      updates.email = email.toLowerCase();
+    }
+    if (address) updates.address = address;
+    if (profileImage) updates.profileImage = profileImage;
 
     const user = await User.findByIdAndUpdate(
       req.user._id,
       updates,
-      { new: true }
+      { new: true, runValidators: true }
     ).select('-password');
 
     res.json({

@@ -533,7 +533,7 @@ const ProfileScreen = ({ navigation }) => {
               <TextInput
                 style={[styles.input, !isEditing && styles.inputDisabled]}
                 value={profileData.firstName}
-                onChangeText={(text) => setProfileData({...profileData, firstName: text})}
+                onChangeText={(text) => setProfileData({ ...profileData, firstName: text })}
                 editable={isEditing}
                 placeholder="Enter first name"
                 placeholderTextColor={theme.colors.text.secondary}
@@ -545,7 +545,7 @@ const ProfileScreen = ({ navigation }) => {
               <TextInput
                 style={[styles.input, !isEditing && styles.inputDisabled]}
                 value={profileData.lastName}
-                onChangeText={(text) => setProfileData({...profileData, lastName: text})}
+                onChangeText={(text) => setProfileData({ ...profileData, lastName: text })}
                 editable={isEditing}
                 placeholder="Enter last name"
                 placeholderTextColor={theme.colors.text.secondary}
@@ -555,13 +555,16 @@ const ProfileScreen = ({ navigation }) => {
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Email</Text>
               <TextInput
-                style={[styles.input, styles.inputDisabled]}
+                style={[styles.input, !isEditing && styles.inputDisabled]}
                 value={profileData.email}
-                editable={false}
+                onChangeText={(text) => setProfileData({ ...profileData, email: text })}
+                editable={isEditing}
                 placeholder="Email address"
                 placeholderTextColor={theme.colors.text.secondary}
+                keyboardType="email-address"
+                autoCapitalize="none"
               />
-              <Text style={styles.inputNote}>Email cannot be changed</Text>
+              {isEditing && <Text style={styles.inputNote}>Updating email will change your login ID</Text>}
             </View>
 
             <View style={styles.inputGroup}>
@@ -569,7 +572,7 @@ const ProfileScreen = ({ navigation }) => {
               <TextInput
                 style={[styles.input, !isEditing && styles.inputDisabled]}
                 value={profileData.phone}
-                onChangeText={(text) => setProfileData({...profileData, phone: text})}
+                onChangeText={(text) => setProfileData({ ...profileData, phone: text })}
                 editable={isEditing}
                 placeholder="Enter phone number"
                 placeholderTextColor={theme.colors.text.secondary}
@@ -582,7 +585,7 @@ const ProfileScreen = ({ navigation }) => {
               <TextInput
                 style={[styles.input, styles.textArea, !isEditing && styles.inputDisabled]}
                 value={profileData.address}
-                onChangeText={(text) => setProfileData({...profileData, address: text})}
+                onChangeText={(text) => setProfileData({ ...profileData, address: text })}
                 editable={isEditing}
                 placeholder="Enter address"
                 placeholderTextColor={theme.colors.text.secondary}
@@ -746,7 +749,7 @@ const ProfileScreen = ({ navigation }) => {
                 <TextInput
                   style={styles.input}
                   value={passwordData.currentPassword}
-                  onChangeText={(text) => setPasswordData({...passwordData, currentPassword: text})}
+                  onChangeText={(text) => setPasswordData({ ...passwordData, currentPassword: text })}
                   placeholder="Enter current password"
                   placeholderTextColor={theme.colors.text.secondary}
                   secureTextEntry
@@ -758,7 +761,7 @@ const ProfileScreen = ({ navigation }) => {
                 <TextInput
                   style={styles.input}
                   value={passwordData.newPassword}
-                  onChangeText={(text) => setPasswordData({...passwordData, newPassword: text})}
+                  onChangeText={(text) => setPasswordData({ ...passwordData, newPassword: text })}
                   placeholder="Enter new password"
                   placeholderTextColor={theme.colors.text.secondary}
                   secureTextEntry
@@ -770,7 +773,7 @@ const ProfileScreen = ({ navigation }) => {
                 <TextInput
                   style={styles.input}
                   value={passwordData.confirmPassword}
-                  onChangeText={(text) => setPasswordData({...passwordData, confirmPassword: text})}
+                  onChangeText={(text) => setPasswordData({ ...passwordData, confirmPassword: text })}
                   placeholder="Confirm new password"
                   placeholderTextColor={theme.colors.text.secondary}
                   secureTextEntry

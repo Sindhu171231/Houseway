@@ -12,17 +12,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useAttendance } from '../../context/AttendanceContext';
+import BottomNavBar from '../../components/common/BottomNavBar';
 
-// Premium Yellow/Black Theme
+// Premium Beige Theme
 const COLORS = {
-  primary: '#FFD700',
-  background: '#0D0D0D',
-  cardBg: '#1A1A1A',
-  cardBorder: 'rgba(255, 215, 0, 0.15)',
-  text: '#FFFFFF',
-  textMuted: '#888888',
-  success: '#00C853',
-  danger: '#FF5252',
+  primary: '#B8860B',      // Dark Golden Rod
+  background: '#F5F5F0',   // Beige
+  cardBg: '#FFFFFF',       // White
+  cardBorder: 'rgba(184, 134, 11, 0.1)',
+  text: '#1A1A1A',
+  textMuted: '#666666',
+  success: '#388E3C',
+  danger: '#D32F2F',
 };
 
 const EmployeeDashboardScreen = ({ navigation }) => {
@@ -30,12 +31,25 @@ const EmployeeDashboardScreen = ({ navigation }) => {
   const { isCheckedIn, checkOut, todayStats, getStats } = useAttendance();
   const [weeklyHours, setWeeklyHours] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [sessionDuration, setSessionDuration] = useState({ hours: 0, minutes: 0 });
 
   useEffect(() => {
     loadWeeklyStats();
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+
+      if (isCheckedIn && todayStats?.checkInTime) {
+        const checkInDate = new Date(todayStats.checkInTime);
+        const diffInMs = new Date() - checkInDate;
+        const totalMinutes = Math.floor(diffInMs / (1000 * 60));
+        setSessionDuration({
+          hours: Math.floor(totalMinutes / 60),
+          minutes: totalMinutes % 60
+        });
+      }
+    }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [isCheckedIn, todayStats?.checkInTime]);
 
   const loadWeeklyStats = async () => {
     try {
@@ -89,24 +103,18 @@ const EmployeeDashboardScreen = ({ navigation }) => {
     });
   };
 
-  const formatActiveTime = () => {
-    const mins = todayStats?.totalActiveMinutes || 0;
-    const hours = Math.floor(mins / 60);
-    const minutes = mins % 60;
-    return { hours, minutes };
-  };
-
-  const time = formatActiveTime();
+  const time = sessionDuration;
 
   return (
     <LinearGradient
-      colors={[COLORS.background, '#151515', COLORS.background]}
+      colors={[COLORS.background, '#F9F9F4', COLORS.background]}
       style={styles.container}
     >
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Header */}
         <View style={styles.header}>
@@ -174,41 +182,57 @@ const EmployeeDashboardScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Client Management Link */}
-        <TouchableOpacity
-          style={styles.managementCard}
-          onPress={() => navigation.navigate('HomeDashboard')}
-          activeOpacity={0.8}
-        >
-          <LinearGradient
-            colors={['#2A2A2A', '#1F1F1F']}
-            style={styles.managementGradient}
+        {/* Client Management Link - Only show when checked in */}
+        {isCheckedIn && (
+          <TouchableOpacity
+            style={styles.managementCard}
+            onPress={() => navigation.navigate('HomeDashboard')}
+            activeOpacity={0.8}
           >
-            <View style={styles.managementIcon}>
-              <Feather name="briefcase" size={32} color={COLORS.primary} />
-            </View>
-            <View style={styles.managementContent}>
-              <Text style={styles.managementTitle}>Client Management</Text>
-              <Text style={styles.managementSubtitle}>
-                Projects • Clients • Invoices • Team
-              </Text>
-            </View>
-            <Feather name="chevron-right" size={24} color={COLORS.primary} />
-          </LinearGradient>
-        </TouchableOpacity>
+            <LinearGradient
+              colors={['#2A2A2A', '#1F1F1F']}
+              style={styles.managementGradient}
+            >
+              <View style={styles.managementIcon}>
+                <Feather name="briefcase" size={32} color={COLORS.primary} />
+              </View>
+              <View style={styles.managementContent}>
+                <Text style={styles.managementTitle}>Client Management</Text>
+                <Text style={styles.managementSubtitle}>
+                  Projects • Clients • Invoices • Team
+                </Text>
+              </View>
+              <Feather name="chevron-right" size={24} color={COLORS.primary} />
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
 
         {/* Settings Link */}
         <TouchableOpacity
           style={styles.settingsLink}
-          onPress={() => navigation.navigate('Settings')}
+          onPress={() => {
+            if (!isCheckedIn) {
+              if (Platform.OS === 'web') {
+                alert('⏳ Access Denied: Please Check-In first to access Settings.');
+              } else {
+                Alert.alert('Check-In Required', 'Please Check-In first to access Settings.');
+              }
+              return;
+            }
+            navigation.navigate('Settings');
+          }}
         >
           <Feather name="settings" size={20} color={COLORS.textMuted} />
           <Text style={styles.settingsText}>Settings & Statistics</Text>
-          <Feather name="chevron-right" size={18} color={COLORS.textMuted} />
+          <Feather name={isCheckedIn ? "chevron-right" : "lock"} size={18} color={isCheckedIn ? COLORS.textMuted : COLORS.danger} />
         </TouchableOpacity>
 
-        <View style={{ height: 40 }} />
+        {/* Extra space for scrolling */}
+        <View style={{ height: 120 }} />
       </ScrollView>
+
+      <BottomNavBar navigation={navigation} activeTab="home" />
+
     </LinearGradient>
   );
 };
@@ -221,6 +245,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    flexGrow: 1,
     paddingBottom: 20,
   },
   header: {
@@ -328,6 +353,8 @@ const styles = StyleSheet.create({
     fontWeight: '200',
     color: COLORS.primary,
     marginHorizontal: 8,
+    height: 70, // Align with numbers
+    lineHeight: 70,
   },
   checkOutButton: {
     flexDirection: 'row',
@@ -376,13 +403,14 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: COLORS.primary + '20',
+    borderColor: 'rgba(184, 134, 11, 0.2)',
   },
   managementGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 20,
     gap: 16,
+    backgroundColor: '#FFFFFF',
   },
   managementIcon: {
     width: 60,
@@ -421,6 +449,23 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: COLORS.textMuted,
+  },
+  lockedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 82, 82, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginTop: 4,
+    gap: 4,
+    alignSelf: 'flex-start',
+  },
+  lockedText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.danger,
+    letterSpacing: 0.5,
   },
 });
 

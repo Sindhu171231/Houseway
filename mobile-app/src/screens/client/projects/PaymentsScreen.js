@@ -23,7 +23,7 @@ const PaymentPage = () => {
   const navigation = useNavigation();
   const { projectId } = route.params || {};
   const { user } = useAuth();
-  
+
   const [payments, setPayments] = useState({ schedule: [], invoices: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [project, setProject] = useState(null);
@@ -42,80 +42,48 @@ const PaymentPage = () => {
     try {
       setIsLoading(true);
 
-      // Fetch project data and purchase orders
-      const [projectResponse, poResponse, invoiceResponse] = await Promise.all([
+      const [projectResponse, poResponse] = await Promise.all([
         projectsAPI.getProjectById(projectId),
         purchaseOrdersAPI.getByProject(projectId),
-        user ? clientsAPI.getClientProjectInvoices(user._id, projectId) : Promise.resolve({ success: false }),
       ]);
 
       let schedule = [];
       let invoices = [];
 
-      // Process project data
       if (projectResponse.success && projectResponse.data.project) {
-        setProject(projectResponse.data.project);
-        
-        // Create payment schedule from budget if available
         const projectData = projectResponse.data.project;
-        if (projectData.budget?.estimated) {
-          const totalBudget = projectData.budget.estimated;
-          const actualSpent = projectData.budget?.actual || 0;
-          const remaining = totalBudget - actualSpent;
-          
-          schedule = [
-            { id: '1', type: 'Paid', amount: actualSpent },
-            { id: '2', type: 'Remaining', amount: remaining > 0 ? remaining : 0 },
-            { id: '3', type: 'Total Budget', amount: totalBudget },
-          ];
-        }
-        
-        // Extract invoice documents from project if available
-        if (projectData.documents && projectData.documents.length > 0) {
-          invoices = projectData.documents
-            .filter(doc => doc.type === 'invoice')
-            .map((doc, index) => ({
-              id: doc._id || `invoice-${index}`,
-              project: projectData.title || 'Current Project',
-              invoiceNo: doc.name || `Invoice-${index + 1}`,
-              status: null,
-              fileUrl: doc.url || '',
-              uploadedAt: doc.uploadedAt,
-            }));
-        }
-      }
+        setProject(projectData);
 
-      // Process client invoices
-      if (invoiceResponse?.success) {
-        invoices = (invoiceResponse.data.invoices || []).map((inv, index) => ({
-          id: inv._id || `invoice-${index}`,
-          project: projectResponse?.data?.project?.title || 'Current Project',
-          invoiceNo: inv.invoiceNumber || `INV-${index + 1}`,
-          status: inv.status,
-          fileUrl: inv.attachments?.[0]?.url || null,
-          uploadedAt: inv.createdAt,
-          total: inv.totalAmount,
-        }));
-      }
+        // Use real payment schedule if available
+        if (projectData.paymentSchedule && projectData.paymentSchedule.length > 0) {
+          schedule = projectData.paymentSchedule.map(item => ({
+            id: item.id || item._id || Math.random().toString(),
+            type: item.name || 'Installation',
+            amount: item.amount || 0,
+            status: item.status || 'pending',
+            dueDate: item.dueDate
+          }));
+        }
 
-      // Process purchase orders for payment terms
-      if (poResponse.success && poResponse.data.purchaseOrders?.length > 0) {
-        poResponse.data.purchaseOrders.forEach(po => {
-          if (po.paymentTerms?.advanceAmount) {
-            schedule.push({
-              id: `po-advance-${po._id}`,
-              type: `Advance - PO#${po.orderNumber || 'N/A'}`,
-              amount: po.paymentTerms.advanceAmount,
-            });
+        // Load invoices from clientProjectInvoices if user is client
+        if (user && user.role === 'client') {
+          try {
+            const invRes = await clientsAPI.getClientProjectInvoices(user._id, projectId);
+            if (invRes.success) {
+              invoices = (invRes.data.invoices || []).map((inv, index) => ({
+                id: inv._id || `invoice-${index}`,
+                project: projectData.title || 'Current Project',
+                invoiceNo: inv.invoiceNumber || `INV-${index + 1}`,
+                status: inv.status,
+                fileUrl: inv.attachments?.[0]?.url || null,
+                uploadedAt: inv.createdAt,
+                total: inv.totalAmount,
+              }));
+            }
+          } catch (e) {
+            console.log("Error loading invoices for client:", e);
           }
-          if (po.paymentTerms?.balanceAmount) {
-            schedule.push({
-              id: `po-balance-${po._id}`,
-              type: `Balance - PO#${po.orderNumber || 'N/A'}`,
-              amount: po.paymentTerms.balanceAmount,
-            });
-          }
-        });
+        }
       }
 
       setPayments({ schedule, invoices });
@@ -176,7 +144,11 @@ const PaymentPage = () => {
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         {/* Payment Schedule */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Payment Schedule</Text>
@@ -189,10 +161,30 @@ const PaymentPage = () => {
               {payments.schedule.map((item, index) => (
                 <View key={item.id}>
                   <View style={styles.scheduleRow}>
-                    <Text style={styles.textSecondary}>{item.type}</Text>
-                    <Text style={styles.textPrimary}>
-                      ${item.amount.toLocaleString()}
-                    </Text>
+                    <View>
+                      <Text style={styles.textPrimary}>{item.type}</Text>
+                      {item.dueDate && (
+                        <Text style={styles.textSecondary}>
+                          Due: {new Date(item.dueDate).toLocaleDateString()}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={styles.textPrimary}>
+                        ₹{(item.amount || 0).toLocaleString()}
+                      </Text>
+                      <View style={[
+                        styles.statusBadge,
+                        { backgroundColor: item.status === 'paid' ? 'rgba(0,128,0,0.1)' : 'rgba(255,165,0,0.1)' }
+                      ]}>
+                        <Text style={[
+                          styles.statusText,
+                          { color: item.status === 'paid' ? COLORS.success : COLORS.warning }
+                        ]}>
+                          {item.status?.toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
                   </View>
                   {index !== payments.schedule.length - 1 && <View style={styles.divider} />}
                 </View>
@@ -215,37 +207,37 @@ const PaymentPage = () => {
               contentContainerStyle={{ gap: 12 }}
               scrollEnabled={false}
               renderItem={({ item }) => (
-              <View style={styles.invoiceCard}>
-                <View style={styles.invoiceLeft}>
-                  <View style={styles.invoiceIcon}>
-                    <Ionicons name="document-text-outline" size={24} color="#1A3A5A" />
+                <View style={styles.invoiceCard}>
+                  <View style={styles.invoiceLeft}>
+                    <View style={styles.invoiceIcon}>
+                      <Ionicons name="document-text-outline" size={24} color="#1A3A5A" />
+                    </View>
+                    <View>
+                      <Text style={styles.textPrimary}>{item.project}</Text>
+                      <Text style={styles.textSecondary}>Invoice #{item.invoiceNo}</Text>
+                    </View>
                   </View>
-                  <View>
-                    <Text style={styles.textPrimary}>{item.project}</Text>
-                    <Text style={styles.textSecondary}>Invoice #{item.invoiceNo}</Text>
-                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.downloadBtn,
+                      item.status === "downloaded" && { backgroundColor: "#BFA46F" },
+                    ]}
+                    onPress={() => handleInvoiceAction(item)}
+                  >
+                    <Ionicons
+                      name={
+                        item.status === "downloaded"
+                          ? "checkmark-circle"
+                          : "cloud-download-outline"
+                      }
+                      size={20}
+                      color="white"
+                    />
+                    <Text style={[styles.btnText, { marginLeft: 6 }]}>
+                      {item.status === "downloaded" ? "Downloaded" : "Download"}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity
-                  style={[
-                    styles.downloadBtn,
-                    item.status === "downloaded" && { backgroundColor: "#BFA46F" },
-                  ]}
-                  onPress={() => handleInvoiceAction(item)}
-                >
-                  <Ionicons
-                    name={
-                      item.status === "downloaded"
-                        ? "checkmark-circle"
-                        : "cloud-download-outline"
-                    }
-                    size={20}
-                    color="white"
-                  />
-                  <Text style={[styles.btnText, { marginLeft: 6 }]}>
-                    {item.status === "downloaded" ? "Downloaded" : "Download"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
               )}
             />
           )}
@@ -262,81 +254,139 @@ const PaymentPage = () => {
 
 export default PaymentPage;
 
+const COLORS = {
+  primary: '#B8860B',        // Dark Golden Rod
+  primaryLight: 'rgba(184, 134, 11, 0.15)',
+  background: '#F5F5F0',     // Beige
+  cardBg: '#FFFFFF',         // White
+  cardBorder: 'rgba(184, 134, 11, 0.1)',
+  text: '#1A1A1A',           // Dark text
+  textMuted: '#666666',      // Muted text
+  success: '#388E3C',
+  warning: '#F57C00',
+  danger: '#D32F2F',
+};
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F5F5DC" },
-  scrollContent: { paddingHorizontal: 16, paddingBottom: 100 },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 150,
+    flexGrow: 1,
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: "#F5F5DC",
+    backgroundColor: COLORS.background,
   },
-  headerBtn: { padding: 8, borderRadius: 999, backgroundColor: "#E0DACE" },
+  headerBtn: {
+    padding: 8,
+    borderRadius: 22,
+    backgroundColor: COLORS.cardBg,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
   headerTitle: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#1A3A5A",
+    color: COLORS.text,
     flex: 1,
     textAlign: "center",
   },
   section: { marginVertical: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: "600", marginBottom: 8, color: "#1A3A5A" },
+  sectionTitle: { fontSize: 18, fontWeight: "700", marginBottom: 12, color: COLORS.text },
   card: {
-    backgroundColor: "white",
-    borderRadius: 24,
-    padding: 16,
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
+    padding: 20,
     shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
   },
-  scheduleRow: { flexDirection: "row", justifyContent: "space-between", marginVertical: 4 },
-  divider: { height: 1, backgroundColor: "#E0DACE", marginVertical: 8 },
+  scheduleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: 'center',
+    marginVertical: 6
+  },
+  divider: { height: 1, backgroundColor: COLORS.cardBorder, marginVertical: 10 },
   invoiceCard: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "white",
-    borderRadius: 24,
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
     padding: 16,
+    marginBottom: 12,
     shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
   },
   invoiceLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
   invoiceIcon: {
-    backgroundColor: "#E0DACE",
-    borderRadius: 999,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 12,
     padding: 12,
     justifyContent: "center",
     alignItems: "center",
   },
   downloadBtn: {
     flexDirection: "row",
-    backgroundColor: "#1A3A5A",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 999,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
     alignItems: "center",
+    gap: 8,
   },
-  textPrimary: { fontSize: 16, fontWeight: "bold", color: "#1A3A5A" },
-  textSecondary: { fontSize: 14, color: "#5C6B7A" },
-  btnText: { color: "white", fontWeight: "600" },
+  textPrimary: { fontSize: 16, fontWeight: "700", color: COLORS.text },
+  textSecondary: { fontSize: 14, color: COLORS.textMuted },
+  btnText: { color: COLORS.cardBg, fontWeight: "700" },
   paymentBtn: {
     position: "absolute",
-    bottom: 16,
-    left: 16,
-    right: 16,
-    backgroundColor: "#1A3A5A",
+    bottom: 30,
+    left: 20,
+    right: 20,
+    backgroundColor: COLORS.primary,
     paddingVertical: 16,
-    borderRadius: 999,
+    borderRadius: 16,
     alignItems: "center",
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  paymentBtnText: { color: "#F5F5DC", fontSize: 18, fontWeight: "600" },
+  paymentBtnText: { color: COLORS.cardBg, fontSize: 18, fontWeight: "700", letterSpacing: 0.5 },
   centerContent: { justifyContent: "center", alignItems: "center" },
-  loadingText: { marginTop: 16, fontSize: 16, color: "#1A3A5A" },
-  emptyText: { fontSize: 14, color: "#999", textAlign: "center", paddingVertical: 8 },
+  loadingText: { marginTop: 16, fontSize: 16, color: COLORS.textMuted },
+  emptyText: {
+    fontSize: 15,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    paddingVertical: 20,
+    lineHeight: 22,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  }
 });

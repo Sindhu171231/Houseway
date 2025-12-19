@@ -65,7 +65,7 @@ const articlesData = [
 const KnowledgePage = () => {
   const route = useRoute();
   const { projectId } = route.params || {};
-  
+
   const [search, setSearch] = useState("");
   const [categories, setCategories] = useState(categoriesData);
   const [bookmarks, setBookmarks] = useState([]);
@@ -115,133 +115,138 @@ const KnowledgePage = () => {
           <Text style={styles.loadingText}>Loading inspiration...</Text>
         </View>
       ) : (
-        <ScrollView style={{ padding: 16, paddingBottom: 100 }}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity>
-            <Ionicons name="arrow-back" size={24} color="#0a142f" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Knowledge Hub</Text>
-          <TouchableOpacity>
-            <Ionicons name="bookmark-outline" size={24} color="#0a142f" />
-          </TouchableOpacity>
-        </View>
+        <ScrollView
+          style={{ padding: 16 }}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity>
+              <Ionicons name="arrow-back" size={24} color="#0a142f" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Knowledge Hub</Text>
+            <TouchableOpacity>
+              <Ionicons name="bookmark-outline" size={24} color="#0a142f" />
+            </TouchableOpacity>
+          </View>
 
-        {/* Search */}
-        <View style={styles.searchContainer}>
-          <Ionicons
-            name="search-outline"
-            size={20}
-            color="#6b7280"
-            style={{ marginLeft: 8 }}
-          />
-          <TextInput
-            placeholder="Search articles, styles, tips..."
-            value={search}
-            onChangeText={setSearch}
-            style={styles.searchInput}
-          />
-        </View>
+          {/* Search */}
+          <View style={styles.searchContainer}>
+            <Ionicons
+              name="search-outline"
+              size={20}
+              color="#6b7280"
+              style={{ marginLeft: 8 }}
+            />
+            <TextInput
+              placeholder="Search articles, styles, tips..."
+              value={search}
+              onChangeText={setSearch}
+              style={styles.searchInput}
+            />
+          </View>
 
-        {/* Categories */}
-        <Text style={styles.sectionTitle}>Categories</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-          {categories.map((cat) => (
-            <TouchableOpacity
-              key={cat.id}
-              style={[
-                styles.categoryBtn,
-                cat.selected ? styles.categorySelected : styles.categoryUnselected,
-              ]}
-              onPress={() => selectCategory(cat.id)}
-            >
-              <Text
+          {/* Categories */}
+          <Text style={styles.sectionTitle}>Categories</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+            {categories.map((cat) => (
+              <TouchableOpacity
+                key={cat.id}
                 style={[
-                  styles.categoryText,
-                  cat.selected ? { color: "#1a3a6b" } : { color: "#6b7280" },
+                  styles.categoryBtn,
+                  cat.selected ? styles.categorySelected : styles.categoryUnselected,
                 ]}
+                onPress={() => selectCategory(cat.id)}
               >
-                {cat.title}
+                <Text
+                  style={[
+                    styles.categoryText,
+                    cat.selected ? { color: "#1a3a6b" } : { color: "#6b7280" },
+                  ]}
+                >
+                  {cat.title}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {/* Tabs */}
+          <View style={styles.tabsContainer}>
+            <TouchableOpacity onPress={() => setActiveTab("All")}>
+              <Text style={activeTab === "All" ? styles.tabSelected : styles.tabUnselected}>
+                All
               </Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+            <TouchableOpacity onPress={() => setActiveTab("Saved")}>
+              <Text style={activeTab === "Saved" ? styles.tabSelected : styles.tabUnselected}>
+                Saved
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-        {/* Tabs */}
-        <View style={styles.tabsContainer}>
-          <TouchableOpacity onPress={() => setActiveTab("All")}>
-            <Text style={activeTab === "All" ? styles.tabSelected : styles.tabUnselected}>
-              All
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setActiveTab("Saved")}>
-            <Text style={activeTab === "Saved" ? styles.tabSelected : styles.tabUnselected}>
-              Saved
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Featured Article */}
-        {featuredArticle && (
-          <>
-            <Text style={styles.sectionTitle}>Featured Article</Text>
-            <View style={styles.card}>
-              <Image
-                source={{ uri: featuredArticle.image }}
-                style={styles.featuredImage}
-                resizeMode="cover"
-              />
-              <View style={{ padding: 12 }}>
-                <Text style={styles.articleTitle}>{featuredArticle.title}</Text>
-                <Text style={styles.articleDesc}>{featuredArticle.description}</Text>
-              </View>
-            </View>
-          </>
-        )}
-
-        {/* Latest Articles */}
-        <Text style={styles.sectionTitle}>
-          {activeTab === "All" ? "Latest Articles" : "Bookmarked Articles"}
-        </Text>
-        {displayedArticles.length === 0 ? (
-          <Text style={{ color: "#6b7280", textAlign: "center", marginTop: 16 }}>
-            No articles found.
-          </Text>
-        ) : (
-          // Remove filtering out featured article for latest
-            <FlatList
-            data={displayedArticles} // <-- use all articles, even the featured one
-            keyExtractor={(item) => item.id}
-            scrollEnabled={false}
-            style={{ marginBottom: 16 }}
-            renderItem={({ item }) => (
-                <View style={styles.latestCard}>
+          {/* Featured Article */}
+          {featuredArticle && (
+            <>
+              <Text style={styles.sectionTitle}>Featured Article</Text>
+              <View style={styles.card}>
                 <Image
+                  source={{ uri: featuredArticle.image }}
+                  style={styles.featuredImage}
+                  resizeMode="cover"
+                />
+                <View style={{ padding: 12 }}>
+                  <Text style={styles.articleTitle}>{featuredArticle.title}</Text>
+                  <Text style={styles.articleDesc}>{featuredArticle.description}</Text>
+                </View>
+              </View>
+            </>
+          )}
+
+          {/* Latest Articles */}
+          <Text style={styles.sectionTitle}>
+            {activeTab === "All" ? "Latest Articles" : "Bookmarked Articles"}
+          </Text>
+          {displayedArticles.length === 0 ? (
+            <Text style={{ color: "#6b7280", textAlign: "center", marginTop: 16 }}>
+              No articles found.
+            </Text>
+          ) : (
+            // Remove filtering out featured article for latest
+            <FlatList
+              data={displayedArticles} // <-- use all articles, even the featured one
+              keyExtractor={(item) => item.id}
+              scrollEnabled={false}
+              style={{ marginBottom: 16 }}
+              renderItem={({ item }) => (
+                <View style={styles.latestCard}>
+                  <Image
                     source={{ uri: item.image }}
                     style={styles.latestImage}
                     resizeMode="cover"
-                />
-                <View style={{ flex: 1, paddingHorizontal: 8 }}>
+                  />
+                  <View style={{ flex: 1, paddingHorizontal: 8 }}>
                     <Text style={styles.articleTitle}>{item.title}</Text>
                     <Text style={styles.articleDesc}>{item.description}</Text>
-                </View>
-                <TouchableOpacity onPress={() => toggleBookmark(item)}>
+                  </View>
+                  <TouchableOpacity onPress={() => toggleBookmark(item)}>
                     <Ionicons
-                    name={
+                      name={
                         bookmarks.some((b) => b.id === item.id)
-                        ? "bookmark"
-                        : "bookmark-outline"
-                    }
-                    size={24}
-                    color="#6b7280"
+                          ? "bookmark"
+                          : "bookmark-outline"
+                      }
+                      size={24}
+                      color="#6b7280"
                     />
-                </TouchableOpacity>
+                  </TouchableOpacity>
                 </View>
-            )}
+              )}
             />
 
-        )}
-      </ScrollView>
+          )}
+        </ScrollView>
       )}
     </SafeAreaView>
   );
@@ -249,26 +254,130 @@ const KnowledgePage = () => {
 
 export default KnowledgePage;
 
+const COLORS = {
+  primary: '#B8860B',        // Dark Golden Rod
+  primaryLight: 'rgba(184, 134, 11, 0.15)',
+  background: '#F5F5F0',     // Beige
+  cardBg: '#FFFFFF',         // White
+  cardBorder: 'rgba(184, 134, 11, 0.1)',
+  text: '#1A1A1A',           // Dark text
+  textMuted: '#666666',      // Muted text
+  accent: '#E6D7BB',
+};
+
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-  headerTitle: { fontSize: 18, fontWeight: "bold", color: "#0a142f" },
-  searchContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "#f5f0e6", borderRadius: 999, marginBottom: 16, height: 40 },
-  searchInput: { flex: 1, paddingHorizontal: 8, fontSize: 14, color: "#0a142f" },
-  tabsContainer: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#e5e7eb", marginBottom: 16 },
-  tabSelected: { borderBottomWidth: 2, borderColor: "#1a3a6b", paddingVertical: 8, fontSize: 14, fontWeight: "600", color: "#1a3a6b", marginRight: 16 },
-  tabUnselected: { borderBottomWidth: 2, borderColor: "transparent", paddingVertical: 8, fontSize: 14, fontWeight: "500", color: "#6b7280", marginRight: 16 },
-  sectionTitle: { fontSize: 16, fontWeight: "bold", marginVertical: 8 },
-  card: { backgroundColor: "#fff", borderRadius: 16, overflow: "hidden", marginBottom: 16, shadowColor: "#000", shadowOpacity: 0.05, shadowOffset: { width: 0, height: 2 }, shadowRadius: 6 },
-  featuredImage: { width: "100%", height: 180 },
-  articleTitle: { fontSize: 14, fontWeight: "bold", color: "#0a142f" },
-  articleDesc: { fontSize: 12, color: "#6b7280", marginTop: 4 },
-  categoriesContainer: { flexDirection: "row", flexWrap: "nowrap", marginBottom: 16 },
-  categoryBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, marginRight: 8 },
-  categorySelected: { backgroundColor: "#e3d9c6" },
-  categoryUnselected: { backgroundColor: "#f5f0e6" },
-  categoryText: { fontSize: 12, fontWeight: "500" },
-  latestCard: { flexDirection: "row", alignItems: "center", backgroundColor: "#fff", borderRadius: 16, padding: 8, marginBottom: 12, shadowColor: "#000", shadowOpacity: 0.05, shadowOffset: { width: 0, height: 2 }, shadowRadius: 6 },
-  latestImage: { width: 60, height: 60, borderRadius: 12 },
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 150,
+    flexGrow: 1,
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 24,
+    marginTop: 40,
+  },
+  headerTitle: { fontSize: 24, fontWeight: "800", color: COLORS.text, letterSpacing: 0.5 },
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
+    marginBottom: 24,
+    height: 54,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    shadowColor: "#000",
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  searchInput: { flex: 1, paddingHorizontal: 12, fontSize: 15, color: COLORS.text, fontWeight: '500' },
+  tabsContainer: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.cardBorder,
+    marginBottom: 24
+  },
+  tabSelected: {
+    borderBottomWidth: 3,
+    borderColor: COLORS.primary,
+    paddingVertical: 12,
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.primary,
+    marginRight: 24
+  },
+  tabUnselected: {
+    borderBottomWidth: 3,
+    borderColor: "transparent",
+    paddingVertical: 12,
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.textMuted,
+    marginRight: 24
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 16,
+    color: COLORS.text,
+    letterSpacing: 0.5,
+  },
+  card: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 20,
+    overflow: "hidden",
+    marginBottom: 24,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 10,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  featuredImage: { width: "100%", height: 220 },
+  articleTitle: { fontSize: 16, fontWeight: "700", color: COLORS.text, lineHeight: 22 },
+  articleDesc: { fontSize: 13, color: COLORS.textMuted, marginTop: 6, lineHeight: 20 },
+  categoryBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginRight: 10,
+    borderWidth: 1,
+  },
+  categorySelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  categoryUnselected: {
+    backgroundColor: COLORS.cardBg,
+    borderColor: COLORS.cardBorder,
+  },
+  categoryText: { fontSize: 13, fontWeight: "700" },
+  latestCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 18,
+    padding: 12,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  latestImage: { width: 70, height: 70, borderRadius: 14 },
   centerContent: { justifyContent: "center", alignItems: "center" },
-  loadingText: { marginTop: 16, fontSize: 16, color: "#1a3a6b" },
+  loadingText: { marginTop: 16, fontSize: 16, color: COLORS.textMuted },
 });

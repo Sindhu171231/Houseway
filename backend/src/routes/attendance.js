@@ -74,12 +74,14 @@ router.post('/heartbeat', authenticate, async (req, res) => {
         today.setHours(0, 0, 0, 0);
         const currentHour = now.getHours();
 
-        const attendance = await Attendance.findOne({ user: userId, date: today, isCheckedIn: true });
+        // Find the active session (handles overnight shifts)
+        const attendance = await Attendance.findOne({ user: userId, isCheckedIn: true })
+            .sort({ date: -1 });
 
         if (!attendance) {
             return res.status(400).json({
                 success: false,
-                message: 'Not checked in today',
+                message: 'No active session found to record heartbeat',
             });
         }
 
@@ -138,12 +140,14 @@ router.post('/check-out', authenticate, async (req, res) => {
         const today = new Date(now);
         today.setHours(0, 0, 0, 0);
 
-        const attendance = await Attendance.findOne({ user: userId, date: today });
+        // Find the most recent active session for this user (handles overnight shifts)
+        const attendance = await Attendance.findOne({ user: userId, isCheckedIn: true })
+            .sort({ date: -1 });
 
         if (!attendance) {
             return res.status(400).json({
                 success: false,
-                message: 'No check-in found for today',
+                message: 'No active session found. Please check in first.',
             });
         }
 
@@ -192,7 +196,12 @@ router.get('/status', authenticate, async (req, res) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        const attendance = await Attendance.findOne({ user: userId, date: today });
+        // Look for active session first, then fallback to most recent record for today/anytime
+        let attendance = await Attendance.findOne({ user: userId, isCheckedIn: true });
+
+        if (!attendance) {
+            attendance = await Attendance.findOne({ user: userId }).sort({ date: -1 });
+        }
 
         res.json({
             success: true,

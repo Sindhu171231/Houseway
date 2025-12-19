@@ -16,22 +16,23 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../context/AuthContext';
-import { usersAPI } from '../../utils/api';
+import { usersAPI, authAPI } from '../../utils/api';
+import BottomNavBar from '../../components/common/BottomNavBar';
 
-// Yellow/Black Theme
+// Premium Beige Theme
 const COLORS = {
-    primary: '#FFD700',
-    background: '#0D0D0D',
-    cardBg: '#1A1A1A',
-    cardBorder: 'rgba(255, 215, 0, 0.15)',
-    text: '#FFFFFF',
-    textMuted: '#888888',
-    inputBg: '#2d2d2d',
-    success: '#00C853',
-    danger: '#FF5252',
+    primary: '#B8860B',      // Dark Golden Rod
+    background: '#F5F5F0',   // Beige
+    cardBg: '#FFFFFF',       // White
+    cardBorder: 'rgba(184, 134, 11, 0.15)',
+    text: '#1A1A1A',
+    textMuted: '#666666',
+    inputBg: '#F9F9F9',
+    success: '#388E3C',
+    danger: '#D32F2F',
 };
 
-const ProfileScreen = ({ navigation }) => {
+const ProfileScreen = ({ navigation, route }) => {
     const { user, updateUser } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -51,6 +52,18 @@ const ProfileScreen = ({ navigation }) => {
     });
 
     const [showPasswordSection, setShowPasswordSection] = useState(false);
+    const scrollRef = React.useRef(null);
+    const passwordSectionRef = React.useRef(null);
+
+    useEffect(() => {
+        if (route.params?.scrollToPassword) {
+            setShowPasswordSection(true);
+            // Wait for section to render
+            setTimeout(() => {
+                scrollRef.current?.scrollToEnd({ animated: true });
+            }, 500);
+        }
+    }, [route.params]);
 
     const handleInputChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -106,10 +119,23 @@ const ProfileScreen = ({ navigation }) => {
                 firstName: formData.firstName,
                 lastName: formData.lastName,
                 phone: formData.phone,
+                profilePicture: profileImage, // Include the profile picture URI
             };
 
-            // If profile image changed, we'd upload it here
-            // For now, just update the text fields
+            // If profile image is a local URI, we should upload it to GCP/storage
+            if (profileImage && !profileImage.startsWith('http')) {
+                const formData = new FormData();
+                const filename = profileImage.split('/').pop();
+                const match = /\.(\w+)$/.exec(filename);
+                const type = match ? `image/${match[1]}` : `image`;
+
+                formData.append('photo', { uri: profileImage, name: filename, type });
+
+                const uploadResponse = await authAPI.uploadProfilePhoto(formData);
+                if (uploadResponse.success) {
+                    updateData.profilePicture = uploadResponse.data.url;
+                }
+            }
 
             const response = await usersAPI.updateProfile(updateData);
 
@@ -191,10 +217,11 @@ const ProfileScreen = ({ navigation }) => {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
             <LinearGradient
-                colors={[COLORS.background, '#151515', COLORS.background]}
+                colors={[COLORS.background, '#F9F9F4', COLORS.background]}
                 style={styles.gradient}
             >
                 <ScrollView
+                    ref={scrollRef}
                     style={styles.scrollView}
                     contentContainerStyle={styles.scrollContent}
                     showsVerticalScrollIndicator={false}
@@ -364,6 +391,7 @@ const ProfileScreen = ({ navigation }) => {
 
                     <View style={{ height: 60 }} />
                 </ScrollView>
+                <BottomNavBar navigation={navigation} activeTab="settings" />
             </LinearGradient>
         </KeyboardAvoidingView>
     );
@@ -380,6 +408,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     scrollContent: {
+        flexGrow: 1,
         paddingBottom: 40,
     },
     header: {

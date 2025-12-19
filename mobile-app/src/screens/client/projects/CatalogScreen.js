@@ -18,7 +18,7 @@ import { materialRequestsAPI, quotationsAPI } from "../../../utils/api";
 const CatalogPage = () => {
   const route = useRoute();
   const { projectId } = route.params || {};
-  
+
   const [catalog, setCatalog] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -35,39 +35,39 @@ const CatalogPage = () => {
   const loadProjectCatalog = async () => {
     try {
       setIsLoading(true);
-      
+
       // Fetch material requests for this project
       const mrResponse = await materialRequestsAPI.getByProject(projectId);
-      
+
       if (mrResponse.success && mrResponse.data.materialRequests?.length > 0) {
         // Group material requests by category
         const catalogSections = {};
-        
+
         for (const mr of mrResponse.data.materialRequests) {
           const category = mr.category || 'General';
-          
+
           if (!catalogSections[category]) {
             catalogSections[category] = {
               section: category,
               items: [],
             };
           }
-          
+
           // Get quotations for this material request
           let vendorName = 'Pending';
           let quotationStatus = null;
-          
+
           if (mr.assignedVendors && mr.assignedVendors.length > 0) {
             vendorName = mr.assignedVendors[0].vendor?.name || mr.assignedVendors[0].vendor?.companyName || 'Vendor Assigned';
           }
-          
+
           // Map material request status to catalog status
           if (mr.status === 'approved') {
             quotationStatus = 'approved';
           } else if (mr.status === 'rejected') {
             quotationStatus = 'rejected';
           }
-          
+
           catalogSections[category].items.push({
             id: mr._id,
             category: category,
@@ -78,7 +78,7 @@ const CatalogPage = () => {
             description: mr.description || '',
           });
         }
-        
+
         // Convert to array
         const catalogArray = Object.values(catalogSections);
         setCatalog(catalogArray);
@@ -122,7 +122,11 @@ const CatalogPage = () => {
       </View>
 
       {/* Scrollable content */}
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         {catalog.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="cube-outline" size={64} color="#999" />
@@ -131,62 +135,62 @@ const CatalogPage = () => {
           </View>
         ) : (
           catalog.map((section, sIdx) => (
-          <View key={sIdx} style={styles.section}>
-            <Text style={styles.sectionTitle}>{section.section}</Text>
-            {section.items.map((item, iIdx) => (
-            <View key={item.id} style={styles.card}>
-                <View style={styles.cardContent}>
-                <View style={styles.cardText}>
-                    <Text style={styles.cardCategory}>{item.category}</Text>
-                    <Text style={styles.cardName}>{item.name}</Text>
-                    <Text style={styles.cardVendor}>
-                    Vendor: <Text style={styles.vendorLink}>{item.vendor}</Text>
-                    </Text>
-                </View>
-                <Image source={{ uri: item.image }} style={styles.cardImage} />
-                </View>
+            <View key={sIdx} style={styles.section}>
+              <Text style={styles.sectionTitle}>{section.section}</Text>
+              {section.items.map((item, iIdx) => (
+                <View key={item.id} style={styles.card}>
+                  <View style={styles.cardContent}>
+                    <View style={styles.cardText}>
+                      <Text style={styles.cardCategory}>{item.category}</Text>
+                      <Text style={styles.cardName}>{item.name}</Text>
+                      <Text style={styles.cardVendor}>
+                        Vendor: <Text style={styles.vendorLink}>{item.vendor}</Text>
+                      </Text>
+                    </View>
+                    <Image source={{ uri: item.image }} style={styles.cardImage} />
+                  </View>
 
-                <View style={styles.cardButtons}>
-                {item.status === "approved" ? (
-                    <View style={[styles.approveBtn, { backgroundColor: "#BFA46F" }]}>
-                    <Ionicons name="checkmark-circle" size={18} color="white" />
-                    <Text style={[styles.btnText, { color: "white", marginLeft: 6 }]}>
-                        Approved
-                    </Text>
-                    </View>
-                ) : item.status === "rejected" ? (
-                    <View style={[styles.rejectBtn, { backgroundColor: "#FECACA" }]}>
-                    <Ionicons name="close-circle" size={18} color="#0A2342" />
-                    <Text style={[styles.btnText, { marginLeft: 6 }]}>Rejected</Text>
-                    </View>
-                ) : (
-                    <>
-                    <TouchableOpacity
-                        style={styles.approveBtn}
-                        onPress={() => handleStatusChange(sIdx, iIdx, "approved")}
-                    >
+                  <View style={styles.cardButtons}>
+                    {item.status === "approved" ? (
+                      <View style={[styles.approveBtn, { backgroundColor: "#BFA46F" }]}>
                         <Ionicons name="checkmark-circle" size={18} color="white" />
                         <Text style={[styles.btnText, { color: "white", marginLeft: 6 }]}>
-                        Approve
+                          Approved
                         </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={styles.rejectBtn}
-                        onPress={() => handleStatusChange(sIdx, iIdx, "rejected")}
-                    >
+                      </View>
+                    ) : item.status === "rejected" ? (
+                      <View style={[styles.rejectBtn, { backgroundColor: "#FECACA" }]}>
                         <Ionicons name="close-circle" size={18} color="#0A2342" />
-                        <Text style={[styles.btnText, { marginLeft: 6 }]}>Reject</Text>
-                    </TouchableOpacity>
-                    </>
-                )}
+                        <Text style={[styles.btnText, { marginLeft: 6 }]}>Rejected</Text>
+                      </View>
+                    ) : (
+                      <>
+                        <TouchableOpacity
+                          style={styles.approveBtn}
+                          onPress={() => handleStatusChange(sIdx, iIdx, "approved")}
+                        >
+                          <Ionicons name="checkmark-circle" size={18} color="white" />
+                          <Text style={[styles.btnText, { color: "white", marginLeft: 6 }]}>
+                            Approve
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.rejectBtn}
+                          onPress={() => handleStatusChange(sIdx, iIdx, "rejected")}
+                        >
+                          <Ionicons name="close-circle" size={18} color="#0A2342" />
+                          <Text style={[styles.btnText, { marginLeft: 6 }]}>Reject</Text>
+                        </TouchableOpacity>
+                      </>
+                    )}
+                  </View>
                 </View>
+              ))}
             </View>
-            ))}
-          </View>
           ))
         )}
       </ScrollView>
-      
+
     </View>
   );
 };
@@ -194,69 +198,113 @@ const CatalogPage = () => {
 export default CatalogPage;
 
 // ------------------ Styles ------------------
+const COLORS = {
+  primary: '#B8860B',        // Dark Golden Rod
+  primaryLight: 'rgba(184, 134, 11, 0.15)',
+  background: '#F5F5F0',     // Beige
+  cardBg: '#FFFFFF',         // White
+  cardBorder: 'rgba(184, 134, 11, 0.1)',
+  text: '#1A1A1A',           // Dark text
+  textMuted: '#666666',      // Muted text
+  success: '#388E3C',
+  warning: '#F57C00',
+  danger: '#D32F2F',
+};
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F5F0E6" },
+  container: { flex: 1, backgroundColor: COLORS.background },
   header: {
     flexDirection: "row",
     alignItems: "center",
     padding: 16,
+    paddingTop: 60,
     justifyContent: "space-between",
-    backgroundColor: "#F5F0E6",
+    backgroundColor: COLORS.background,
   },
-  headerTitle: { fontSize: 20, fontWeight: "bold", color: "#0A2342" },
-  scrollContent: { padding: 16, paddingBottom: 80 },
-  section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 22, fontWeight: "bold", color: "#0A2342", marginBottom: 12 },
+  headerTitle: { fontSize: 22, fontWeight: "800", color: COLORS.text, letterSpacing: 0.5 },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 150,
+    flexGrow: 1,
+  },
+  section: { marginBottom: 30 },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: COLORS.primary,
+    marginBottom: 16,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
   card: {
-    backgroundColor: "white",
-    borderRadius: 24,
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 20,
     shadowColor: "#000",
     shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 10,
+    elevation: 4,
     marginBottom: 16,
-    padding: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
   },
   cardContent: { flexDirection: "row", gap: 16, alignItems: "center" },
   cardText: { flex: 1 },
-  cardCategory: { fontSize: 12, color: "#5C6A7D", fontWeight: "500" },
-  cardName: { fontSize: 16, fontWeight: "bold", color: "#0A2342" },
-  cardVendor: { fontSize: 12, color: "#5C6A7D" },
-  vendorLink: { textDecorationLine: "underline", color: "#D4AF7C" },
-  cardImage: { width: 100, height: 100, borderRadius: 12 },
-  cardButtons: { flexDirection: "row", marginTop: 12, gap: 8 },
+  cardCategory: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontWeight: "700",
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  cardName: { fontSize: 18, fontWeight: "700", color: COLORS.text },
+  cardVendor: { fontSize: 13, color: COLORS.textMuted, marginTop: 4 },
+  vendorLink: { color: COLORS.primary, fontWeight: '700' },
+  cardImage: { width: 90, height: 90, borderRadius: 12 },
+  cardButtons: { flexDirection: "row", marginTop: 20, gap: 12 },
   approveBtn: {
     flex: 1,
     flexDirection: "row",
-    backgroundColor: "#D4AF7C",
-    paddingVertical: 10,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 12,
     justifyContent: "center",
     alignItems: "center",
-    borderRadius: 999,
+    borderRadius: 12,
   },
   rejectBtn: {
     flex: 1,
     flexDirection: "row",
-    backgroundColor: "#E6E6E6",
-    paddingVertical: 10,
+    backgroundColor: 'rgba(211, 47, 47, 0.1)',
+    paddingVertical: 12,
     justifyContent: "center",
     alignItems: "center",
-    borderRadius: 999,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(211, 47, 47, 0.2)',
   },
-  btnText: { fontWeight: "600", fontSize: 14 },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderColor: "#E5E5E5",
-    backgroundColor: "#F5F0E6",
-  },
-  navItem: { alignItems: "center", gap: 2 },
-  navText: { fontSize: 10, color: "#5C6A7D" },
+  btnText: { fontWeight: "700", fontSize: 14 },
   centerContent: { justifyContent: "center", alignItems: "center" },
-  loadingText: { marginTop: 16, fontSize: 16, color: "#0A2342" },
-  emptyState: { flex: 1, justifyContent: "center", alignItems: "center", paddingVertical: 60 },
-  emptyText: { fontSize: 18, fontWeight: "600", color: "#999", marginTop: 16 },
-  emptySubtext: { fontSize: 14, color: "#666", marginTop: 8, textAlign: "center", paddingHorizontal: 32 },
+  loadingText: { marginTop: 16, fontSize: 16, color: COLORS.textMuted },
+  emptyState: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 100
+  },
+  emptyText: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    lineHeight: 22,
+    paddingHorizontal: 40
+  },
 });

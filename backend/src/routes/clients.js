@@ -213,9 +213,9 @@ router.get('/:id/projects', authenticate, isOwnerOrEmployee, async (req, res) =>
 /**
  * @route   PUT /api/clients/:id
  * @desc    Update client details and status
- * @access  Private (Owner only)
+ * @access  Private (Owner, Employee)
  */
-router.put('/:id', authenticate, authorize(['owner']), async (req, res) => {
+router.put('/:id', authenticate, isOwnerOrEmployee, async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
@@ -442,7 +442,7 @@ router.post('/:id/media', authenticate, isOwnerOrEmployee, uploadMultiple('clien
         originalName: file.originalname,
         url,
         type: file.mimetype.startsWith('image/') ? 'image' :
-              file.mimetype.startsWith('video/') ? 'video' : 'document',
+          file.mimetype.startsWith('video/') ? 'video' : 'document',
         mimeType: file.mimetype,
         size: file.size,
         description,

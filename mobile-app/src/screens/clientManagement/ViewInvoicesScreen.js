@@ -14,30 +14,47 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { invoicesAPI } from '../../utils/api';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { useAuth } from '../../context/AuthContext';
+import { useAttendance } from '../../context/AttendanceContext';
+import BottomNavBar from '../../components/common/BottomNavBar';
 
-// Colors
+// Premium Beige Theme
 const COLORS = {
-    primary: '#FFD700', // Yellow
-    background: '#0D0D0D', // Black
-    cardBg: '#1A1A1A',
-    cardBorder: 'rgba(255, 215, 0, 0.15)',
-    text: '#FFFFFF',
-    textMuted: '#888888',
-    danger: '#FF5252',
-    success: '#00C853',
-    warning: '#FFB300',
+    primary: '#B8860B',        // Dark Golden Rod
+    primaryLight: 'rgba(184, 134, 11, 0.15)',
+    background: '#F5F5F0',     // Beige
+    cardBg: '#FFFFFF',         // White cards
+    cardBorder: 'rgba(184, 134, 11, 0.1)',
+    text: '#1A1A1A',           // Dark text
+    textMuted: '#666666',      // Muted text
+    success: '#388E3C',
+    warning: '#F57C00',
+    danger: '#D32F2F',
 };
 
 const ViewInvoicesScreen = ({ navigation, route }) => {
     const { projectId } = route.params;
+    const { user, isAuthenticated } = useAuth();
+    const { isCheckedIn } = useAttendance();
 
     const [invoices, setInvoices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => {
+        // Protection: If employee is not checked in, redirect to Check-In screen
+        if (isAuthenticated && user?.role === 'employee' && !isCheckedIn) {
+            if (Platform.OS === 'web') {
+                alert('⏳ Access Denied: You must be Checked-In to view invoices.');
+            } else {
+                Alert.alert('Check-In Required', 'You must be Checked-In to view invoices.');
+            }
+            navigation.replace('CheckIn');
+            return;
+        }
+
         loadInvoices();
-    }, [projectId]);
+    }, [projectId, isAuthenticated, user, isCheckedIn, navigation]);
 
     const loadInvoices = async () => {
         try {
@@ -162,8 +179,8 @@ const ViewInvoicesScreen = ({ navigation, route }) => {
                   <tr>
                     <td>${item.description}</td>
                     <td style="text-align: right;">${item.quantity}</td>
-                    <td style="text-align: right;">$${item.unitPrice.toFixed(2)}</td>
-                    <td style="text-align: right;">$${item.total.toFixed(2)}</td>
+                    <td style="text-align: right;">₹${item.unitPrice.toFixed(2)}</td>
+                    <td style="text-align: right;">₹${item.total.toFixed(2)}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -171,15 +188,15 @@ const ViewInvoicesScreen = ({ navigation, route }) => {
 
             <div class="total-row">
               <span class="total-label">Subtotal</span>
-              <span class="total-value">$${invoice.subtotal.toFixed(2)}</span>
+              <span class="total-value">₹${invoice.subtotal.toFixed(2)}</span>
             </div>
             <div class="total-row">
               <span class="total-label">Tax (${invoice.taxRate}%)</span>
-              <span class="total-value">$${invoice.taxAmount.toFixed(2)}</span>
+              <span class="total-value">₹${invoice.taxAmount.toFixed(2)}</span>
             </div>
              <div class="total-row grand-total">
               <span class="total-label">Total</span>
-              <span class="total-value">$${invoice.totalAmount.toFixed(2)}</span>
+              <span class="total-value">₹${invoice.totalAmount.toFixed(2)}</span>
             </div>
 
             <div class="footer">
@@ -216,7 +233,7 @@ const ViewInvoicesScreen = ({ navigation, route }) => {
             <View style={styles.cardBody}>
                 <View>
                     <Text style={styles.label}>Amount</Text>
-                    <Text style={styles.amount}>${item.totalAmount.toFixed(2)}</Text>
+                    <Text style={styles.amount}>₹{item.totalAmount.toFixed(2)}</Text>
                 </View>
                 <View style={styles.actions}>
                     {item.status === 'draft' && (
@@ -238,7 +255,7 @@ const ViewInvoicesScreen = ({ navigation, route }) => {
     return (
         <View style={styles.container}>
             <LinearGradient
-                colors={[COLORS.background, '#1a1a0d', COLORS.cardBg]}
+                colors={[COLORS.background, COLORS.background, COLORS.background]}
                 style={styles.header}
             >
                 <View style={styles.headerTop}>
@@ -263,6 +280,7 @@ const ViewInvoicesScreen = ({ navigation, route }) => {
                 <ScrollView
                     style={styles.scrollView}
                     contentContainerStyle={styles.listContent}
+                    keyboardShouldPersistTaps="handled"
                     refreshControl={
                         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
                     }
@@ -287,6 +305,7 @@ const ViewInvoicesScreen = ({ navigation, route }) => {
                     )}
                 </ScrollView>
             )}
+            <BottomNavBar navigation={navigation} activeTab="projects" />
         </View>
     );
 };
@@ -318,7 +337,7 @@ const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: 'rgba(255,215,0,0.1)',
+        backgroundColor: COLORS.primaryLight,
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
@@ -338,7 +357,7 @@ const styles = StyleSheet.create({
     listContent: {
         padding: 20,
         flexGrow: 1,
-        paddingBottom: 40,
+        paddingBottom: 100,
     },
     card: {
         backgroundColor: COLORS.cardBg,
@@ -376,7 +395,7 @@ const styles = StyleSheet.create({
     },
     divider: {
         height: 1,
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        backgroundColor: COLORS.cardBorder,
         marginVertical: 12,
     },
     cardBody: {
@@ -392,7 +411,7 @@ const styles = StyleSheet.create({
     amount: {
         fontSize: 18,
         fontWeight: '700',
-        color: COLORS.primary,
+        color: '#1F2937', // Dark amount
     },
     actions: {
         flexDirection: 'row',
@@ -419,7 +438,7 @@ const styles = StyleSheet.create({
         borderRadius: 10,
     },
     createBtnText: {
-        color: COLORS.background,
+        color: '#1F2937', // Dark text on yellow button
         fontWeight: '700',
     }
 

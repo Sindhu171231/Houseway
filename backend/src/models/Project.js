@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const projectSchema = new mongoose.Schema({
+  projectId: {
+    type: String,
+    unique: true,
+    index: true,
+  },
   title: {
     type: String,
     required: [true, 'Project title is required'],
@@ -54,7 +59,7 @@ const projectSchema = new mongoose.Schema({
     },
     currency: {
       type: String,
-      default: 'USD',
+      default: 'INR',
     },
   },
   timeline: {
@@ -108,6 +113,26 @@ const projectSchema = new mongoose.Schema({
     reminderSent: {
       type: Boolean,
       default: false,
+    },
+  }],
+  paymentSchedule: [{
+    name: {
+      type: String,
+      required: true,
+      default: 'Payment Installment',
+    },
+    amount: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    dueDate: {
+      type: Date,
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'paid', 'overdue', 'partial'],
+      default: 'pending',
     },
   }],
   location: {
@@ -294,8 +319,36 @@ projectSchema.virtual('budgetUtilization').get(function () {
   return 0;
 });
 
-// Pre-save middleware to validate dates
-projectSchema.pre('save', function (next) {
+// Pre-save middleware to validate dates and generate projectId
+projectSchema.pre('save', async function (next) {
+  // Generate projectId if not set (new project)
+  if (!this.projectId) {
+    try {
+      // Find the last project to get the next number
+      const lastProject = await mongoose.model('Project')
+        .findOne({ projectId: { $exists: true, $ne: null } })
+        .sort({ projectId: -1 })
+        .select('projectId');
+
+      let nextNum = 1;
+      if (lastProject && lastProject.projectId) {
+        // Extract number from "HW-XXXXX"
+        const match = lastProject.projectId.match(/HW-(\d+)/);
+        if (match) {
+          nextNum = parseInt(match[1], 10) + 1;
+        }
+      }
+
+      // Format as HW-XXXXX (5 digits with leading zeros)
+      this.projectId = `HW-${String(nextNum).padStart(5, '0')}`;
+    } catch (err) {
+      console.error('Error generating projectId:', err);
+      // Fallback: use timestamp-based ID
+      this.projectId = `HW-${Date.now().toString().slice(-5)}`;
+    }
+  }
+
+  // Validate dates
   if (this.timeline.startDate && this.timeline.expectedEndDate) {
     if (this.timeline.startDate >= this.timeline.expectedEndDate) {
       return next(new Error('Expected end date must be after start date'));

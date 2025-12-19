@@ -8,41 +8,63 @@ import {
   RefreshControl,
   Dimensions,
   ActivityIndicator,
+  Alert,
+  Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import WaveHeader from '../../components/clientManagement/WaveHeader';
 import { projectsAPI } from '../../utils/api';
+import { useAttendance } from '../../context/AttendanceContext';
+import BottomNavBar from '../../components/common/BottomNavBar';
+import { useFocusEffect } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
-// Yellow/Black Theme
+// Light Cream/Yellow Theme
+// Premium Beige Theme
 const COLORS = {
-  primary: '#FFD700',
-  background: '#0D0D0D',
-  cardBg: '#1A1A1A',
-  cardBorder: 'rgba(255, 215, 0, 0.15)',
-  text: '#FFFFFF',
-  textMuted: '#888888',
-  success: '#00C853',
-  warning: '#FFB300',
-  danger: '#FF5252',
+  primary: '#B8860B',        // Dark Golden Rod
+  primaryLight: 'rgba(184, 134, 11, 0.15)',
+  background: '#F5F5F0',     // Beige
+  cardBg: '#FFFFFF',         // White cards
+  cardBorder: 'rgba(184, 134, 11, 0.1)',
+  text: '#1A1A1A',           // Dark text
+  textMuted: '#666666',      // Muted text
+  textDim: '#999999',        // Dim text
+  success: '#388E3C',
+  warning: '#F57C00',
+  danger: '#D32F2F',
 };
 
 const ProjectListScreen = ({ navigation, route }) => {
   const { clientId } = route.params || {};
   const { user, isAuthenticated } = useAuth();
+  const { isCheckedIn } = useAttendance();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    if (isAuthenticated && user) {
-      loadProjects();
-    } else {
-      setLoading(false);
-    }
-  }, [isAuthenticated, user, clientId]);
+  useFocusEffect(
+    React.useCallback(() => {
+      // Protection: If employee is not checked in, redirect to Check-In screen
+      if (isAuthenticated && user?.role === 'employee' && !isCheckedIn) {
+        if (Platform.OS === 'web') {
+          alert('⏳ Access Denied: You must be Checked-In to access projects.');
+        } else {
+          Alert.alert('Check-In Required', 'You must be Checked-In to access projects.');
+        }
+        navigation.replace('CheckIn');
+        return;
+      }
+
+      if (isAuthenticated && user) {
+        loadProjects();
+      } else {
+        setLoading(false);
+      }
+    }, [isAuthenticated, user, clientId, isCheckedIn, navigation])
+  );
 
   const loadProjects = async () => {
     try {
@@ -52,13 +74,22 @@ const ProjectListScreen = ({ navigation, route }) => {
       }
 
       setLoading(true);
+      console.log('Loading projects for user:', user._id, 'Role:', user.role);
 
       let response;
+      const params = {
+        limit: 50,
+        _t: Date.now() // Cache busting
+      };
+
       if (clientId) {
-        response = await projectsAPI.getClientProjects(clientId);
+        response = await projectsAPI.getClientProjects(clientId, params);
       } else {
-        response = await projectsAPI.getProjects({ assignedTo: user._id });
+        // Don't pass assignedTo - backend handles role-based filtering automatically
+        response = await projectsAPI.getProjects(params);
       }
+
+      console.log('Projects response success:', response.success, 'Count:', response.data?.projects?.length);
 
       if (response.success) {
         setProjects(response.data.projects || []);
@@ -123,9 +154,8 @@ const ProjectListScreen = ({ navigation, route }) => {
 
           {item.budget && (
             <View style={styles.infoItem}>
-              <Feather name="dollar-sign" size={14} color={COLORS.primary} />
-              <Text style={[styles.infoText, { color: COLORS.primary }]}>
-                ${(item.budget.estimated || 0).toLocaleString()}
+              <Text style={[styles.infoText, { color: COLORS.primary, fontWeight: '700' }]}>
+                ₹{(item.budget.estimated || 0).toLocaleString()}
               </Text>
             </View>
           )}
@@ -182,6 +212,7 @@ const ProjectListScreen = ({ navigation, route }) => {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />
         }
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
@@ -195,7 +226,7 @@ const ProjectListScreen = ({ navigation, route }) => {
               style={styles.addButton}
               onPress={() => navigation.navigate('CreateProject')}
             >
-              <Feather name="plus" size={20} color={COLORS.background} />
+              <Feather name="plus" size={20} color="#1F2937" />
               <Text style={styles.addButtonText}>Create Project</Text>
             </TouchableOpacity>
           </View>
@@ -208,8 +239,11 @@ const ProjectListScreen = ({ navigation, route }) => {
         onPress={() => navigation.navigate('AddClient')}
         activeOpacity={0.8}
       >
-        <Feather name="user-plus" size={24} color={COLORS.background} />
+        <Feather name="user-plus" size={24} color="#1F2937" />
       </TouchableOpacity>
+
+      {/* Bottom Navigation */}
+      <BottomNavBar navigation={navigation} activeTab="projects" />
     </View>
   );
 };
@@ -236,7 +270,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   listContent: {
-    paddingBottom: 20,
+    paddingBottom: 150,
+    flexGrow: 1,
   },
   projectCard: {
     flexDirection: 'row',
@@ -344,11 +379,11 @@ const styles = StyleSheet.create({
   addButtonText: {
     fontSize: 14,
     fontWeight: '700',
-    color: COLORS.background,
+    color: '#1F2937', // Dark text on yellow
   },
   fabButton: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 80, // Moved up to avoid overlaps with BottomNavBar
     right: 24,
     width: 60,
     height: 60,

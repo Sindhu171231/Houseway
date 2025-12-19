@@ -3,6 +3,10 @@ const router = express.Router();
 const ClientInvoice = require('../models/ClientInvoice');
 const Project = require('../models/Project');
 const { authenticate } = require('../middleware/auth');
+const User = require('../models/User');
+const File = require('../models/File');
+const { generateInvoicePDF } = require('../utils/pdfGenerator');
+const { uploadToGCS } = require('../utils/gcs');
 
 /**
  * @route   POST /api/invoices
@@ -22,6 +26,8 @@ router.post('/', authenticate, async (req, res) => {
             paymentTerms,
             notes,
         } = req.body;
+
+        console.log('📝 [Invoice] Create request received for Project:', projectId);
 
         // Validate project exists
         const project = await Project.findById(projectId);
@@ -56,7 +62,65 @@ router.post('/', authenticate, async (req, res) => {
             createdBy: req.user._id,
         });
 
+        console.log('💾 [Invoice] Saving invoice to database...');
+
         await invoice.save();
+
+        // Generate and upload PDF
+        try {
+            console.log('🔍 [Invoice] Fetching client details for PDF...');
+            const client = await User.findById(invoice.clientId);
+            if (client) {
+                console.log('📄 [Invoice] Generating PDF for invoice:', invoice.invoiceNumber);
+                const pdfBuffer = await generateInvoicePDF(invoice, project, client);
+                const filename = `Invoice_${invoice.invoiceNumber}.pdf`;
+
+                console.log('☁️ [Invoice] Uploading PDF to GCS...');
+                const uploadResult = await uploadToGCS({
+                    buffer: pdfBuffer,
+                    mimetype: 'application/pdf',
+                    originalname: filename,
+                    folder: 'invoices',
+                    projectId: projectId.toString(),
+                });
+
+                invoice.attachments.push({
+                    filename: uploadResult.filename,
+                    originalName: filename,
+                    url: uploadResult.url,
+                    size: pdfBuffer.length,
+                    uploadedAt: new Date()
+                });
+
+                // Create a File record for the invoice so it appears in file lists
+                try {
+                    const fileDoc = new File({
+                        filename: uploadResult.filename,
+                        originalName: filename,
+                        category: 'invoices',
+                        mimeType: 'application/pdf',
+                        size: pdfBuffer.length,
+                        path: uploadResult.url,
+                        uploadedBy: req.user._id,
+                        project: projectId,
+                        invoiceInfo: `Invoice #${invoice.invoiceNumber}`,
+                        invoiceDate: invoice.issueDate
+                    });
+                    await fileDoc.save();
+                } catch (fileError) {
+                    console.error('Error creating File record for invoice:', fileError);
+                }
+
+                await invoice.save();
+                console.log('✅ [Invoice] PDF attached successfully');
+            } else {
+                console.warn('⚠️ [Invoice] Client not found, skipping PDF generation');
+            }
+        } catch (pdfError) {
+            console.error('Error generating/uploading invoice PDF:', pdfError);
+            // We don't fail the response here to avoid rolling back the invoice creation
+            // but we log the error.
+        }
 
         res.status(201).json({
             success: true,

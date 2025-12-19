@@ -3,8 +3,7 @@ import {
   TouchableOpacity,
   Text,
   StyleSheet,
-  ViewStyle,
-  TextStyle,
+  View,
   ActivityIndicator,
   Animated,
   useWindowDimensions
@@ -60,18 +59,18 @@ const GradientButton = ({
     }
   };
 
-  const buttonStyle: ViewStyle = [
+  const buttonStyle = [
     styles.button,
     {
       height,
       borderRadius,
-      width: width || (width === 'full' ? screenWidth - 40 : undefined),
+      width: width === 'full' ? screenWidth - 40 : width,
     },
     disabled && styles.disabledButton,
     style,
   ];
 
-  const textStyles: TextStyle = [
+  const textStyles = [
     styles.text,
     {
       fontSize,

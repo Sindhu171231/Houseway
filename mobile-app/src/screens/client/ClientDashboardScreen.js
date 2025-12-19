@@ -7,7 +7,7 @@ import {
   ImageBackground,
   Image,
   ActivityIndicator,
-  TouchableOpacity 
+  TouchableOpacity
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, {
@@ -41,7 +41,7 @@ export default function ClientDashboardScreen() {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      
+
       // Check if user is authenticated
       if (!user || !user._id) {
         console.error('User not authenticated');
@@ -50,7 +50,7 @@ export default function ClientDashboardScreen() {
       }
 
       console.log('[ClientDashboard] Fetching data for user:', user._id);
-      
+
       // Fetch client stats, projects, and recent activities in parallel
       const [statsRes, projectsRes, activitiesRes] = await Promise.allSettled([
         dashboardAPI.getClientStats(),
@@ -105,12 +105,13 @@ export default function ClientDashboardScreen() {
   }
 
   return (
-    <GestureHandlerRootView style={[styles.container, { backgroundColor: selectedColor}]}>
+    <GestureHandlerRootView style={[styles.container, { backgroundColor: selectedColor }]}>
       <Text style={styles.header}>Moodboard Wall</Text>
+      <Text style={styles.subHeader}>Welcome back, {user?.firstName}! Here's your design board.</Text>
 
       {/* Recent Activities Section */}
-      <View style={[styles.activitiesSection, { top: 60, right: 20 }]}>
-        <Text style={styles.activitiesTitle}>Recent Activity</Text>
+      <View style={[styles.activitiesSection, { top: 120, right: 20 }]}>
+        <Text style={styles.activitiesTitle}>Recent Updates</Text>
         <View style={styles.activitiesList}>
           {recentActivities.length > 0 ? (
             recentActivities.slice(0, 3).map((activity, index) => (
@@ -127,9 +128,9 @@ export default function ClientDashboardScreen() {
 
       {/* Example pinned note */}
       <View style={[styles.noteCard, { top: 140, left: 20, transform: [{ rotate: "-6deg" }] }]}>
-        <Text style={styles.handwritten}>Color Palette</Text>
+        <Text style={styles.handwritten}>Style Guide</Text>
         <View style={styles.paletteRow}>
-          {["#EAE7E1", "#D4C9B8", "#342F2A", "#C0A062"].map((color) => (
+          {["#F5F5F0", "#E6D7BB", "#B8860B", "#1A1A1A"].map((color) => (
             <TouchableOpacity
               key={color}
               onPress={() => setSelectedColor(color)}
@@ -140,29 +141,29 @@ export default function ClientDashboardScreen() {
       </View>
 
       {/* Vendor spotlight */}
-      <View style={[styles.vendorCard, { top: 200, left: 20, transform: [{ rotate: "2deg" }] }]}>
-        <Text style={styles.vendorTitle}>Vendor Spotlight</Text>
+      <View style={[styles.vendorCard, { top: 220, left: 20, transform: [{ rotate: "2deg" }] }]}>
+        <Text style={styles.vendorTitle}>Curated Vendors</Text>
         <View style={{ flexDirection: "row", gap: 10 }}>
           <Image
             source={{ uri: "https://logo.clearbit.com/rh.com" }}
-            style={{ width: 60, height: 20, resizeMode: "contain", opacity: 0.7 }}
+            style={{ width: 60, height: 20, resizeMode: "contain", opacity: 0.8 }}
           />
           <Image
             source={{ uri: "https://logo.clearbit.com/arhaus.com" }}
-            style={{ width: 60, height: 20, resizeMode: "contain", opacity: 0.7 }}
+            style={{ width: 60, height: 20, resizeMode: "contain", opacity: 0.8 }}
           />
         </View>
       </View>
-      
+
       <View style={styles.noteBox}>
-        <Text style={styles.noteTitle}>Note:</Text>
-        <Text style={styles.noteText}>Check marble{"\n"}samples by Friday!</Text>
+        <Text style={styles.noteTitle}>Design Tip</Text>
+        <Text style={styles.noteText}>Natural light enhances the warm tones in your palette. Consider sheer drapes.</Text>
       </View>
 
       {/* Drop Zone */}
       <View style={styles.dropZone}>
-        <Text style={styles.dropText}>Drag a project here</Text>
-        <Text style={styles.dropSub}>to view details</Text>
+        <Text style={styles.dropText}>DRAG PROJECT HERE</Text>
+        <Text style={styles.dropSub}>to explore details</Text>
       </View>
 
       {/* Dynamic Project Tiles */}
@@ -262,15 +263,15 @@ function DraggableTile({ project, dropZone, i }) {
         <ImageBackground
           source={{ uri: project.images?.[0]?.url || project.thumbnail || "https://picsum.photos/200" }}
           style={styles.tileImage}
-          imageStyle={{ borderRadius: 8 }}
+          imageStyle={{ borderRadius: 16 }}
         >
           <View style={styles.overlay}>
             <Text style={styles.tileTitle} numberOfLines={1}>{project.title}</Text>
-            <Text style={styles.tileDesc} numberOfLines={2}>
-              {project.description}
-            </Text>
+            <View style={styles.tileProgressContainer}>
+              <View style={[styles.tileProgressBar, { width: `${project.progress?.percentage || 0}%` }]} />
+            </View>
             <Text style={styles.tileStatus}>
-              {project.status} • {project.budget ? `$${project.budget.toLocaleString()}` : 'Budget N/A'}
+              {project.progress?.percentage || 0}% • {project.status?.toUpperCase()}
             </Text>
           </View>
         </ImageBackground>
@@ -279,183 +280,213 @@ function DraggableTile({ project, dropZone, i }) {
   );
 }
 
+const COLORS = {
+  primary: '#B8860B',        // Dark Golden Rod
+  primaryLight: 'rgba(184, 134, 11, 0.15)',
+  background: '#F5F5F0',     // Beige
+  cardBg: '#FFFFFF',         // White
+  cardBorder: 'rgba(184, 134, 11, 0.1)',
+  text: '#1A1A1A',           // Dark text
+  textMuted: '#666666',      // Muted text
+  accent: '#E6D7BB',
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F4F1ED",
+    backgroundColor: COLORS.background,
   },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+  centered: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: COLORS.background },
   header: {
-    fontSize: 22,
-    fontWeight: "700",
+    fontSize: 26,
+    fontWeight: "800",
     textAlign: "center",
-    marginVertical: 20,
-    fontFamily: "serif",
-    color: "#342F2A",
+    marginTop: 60,
+    marginBottom: 10,
+    color: COLORS.text,
+    letterSpacing: 1,
+  },
+  subHeader: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    marginBottom: 20,
+    fontWeight: '500',
   },
   dropZone: {
     position: "absolute",
-    top: height * 0.35,
-    left: width * 0.15,
-    width: width * 0.7,
-    height: 160,
+    top: height * 0.32,
+    left: width * 0.1,
+    width: width * 0.8,
+    height: 140,
     borderWidth: 2,
     borderStyle: "dashed",
-    borderColor: "rgba(192,160,98,0.5)",
-    borderRadius: 20,
+    borderColor: COLORS.primaryLight,
+    borderRadius: 24,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: 'rgba(255,255,255,0.4)',
   },
-  dropText: { fontSize: 16, fontWeight: "600", color: "#342F2A", opacity: 0.6 },
-  dropSub: { fontSize: 12, color: "#746C64", opacity: 0.5 },
+  dropText: { fontSize: 16, fontWeight: "700", color: COLORS.primary, letterSpacing: 0.5 },
+  dropSub: { fontSize: 12, color: COLORS.textMuted, marginTop: 4 },
   tile: {
-    width: 150,
-    height: 200,
+    width: 160,
+    height: 220,
     position: "absolute",
-    backgroundColor: "#fff",
-    borderRadius: 8,
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
     shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 5,
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    overflow: 'hidden',
   },
   tileImage: {
     flex: 1,
     justifyContent: "flex-end",
-    padding: 8,
-  },
-  tileText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 14,
-    textAlign: "center",
-  },
-  noteCard: {
-    position: "absolute",
-    width: 120,
-    backgroundColor: "#fff",
-    padding: 8,
-    borderRadius: 6,
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-  },
-  handwritten: {
-    fontFamily: "Caveat-Regular",
-    fontSize: 16,
-    marginBottom: 6,
-  },
-  paletteRow: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
-  paletteSwatch: {
-    width: 25,
-    height: 25,
-    borderRadius: 4,
-  },
-  vendorCard: {
-    position: "absolute",
-    width: 140,
-    backgroundColor: "#fff",
-    padding: 8,
-    borderRadius: 6,
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-  },
-  vendorTitle: {
-    fontSize: 12,
-    fontWeight: "600",
-    marginBottom: 6,
-    color: "#342F2A",
   },
   overlay: {
-    backgroundColor: "rgba(0,0,0,0.5)", // dark overlay for readability
-    borderBottomLeftRadius: 8,
-    borderBottomRightRadius: 8,
-    padding: 6,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    padding: 12,
   },
   tileTitle: {
     color: "#fff",
     fontWeight: "700",
     fontSize: 14,
-    marginBottom: 2,
-  },
-  tileDesc: {
-    color: "#eee",
-    fontSize: 12,
+    marginBottom: 6,
   },
   tileStatus: {
-    color: "#C0A062",
+    color: COLORS.accent,
     fontSize: 11,
-    marginTop: 2,
+    fontWeight: '600',
+    marginTop: 6,
   },
-  activitiesSection: {
-    position: 'absolute',
-    width: 180,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 12,
+  tileProgressContainer: {
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  tileProgressBar: {
+    height: '100%',
+    backgroundColor: COLORS.primary,
+  },
+  noteCard: {
+    position: "absolute",
+    width: 130,
+    backgroundColor: '#FFF9C4', // Classic post-it yellow
     padding: 12,
-    shadowColor: "#000",
+    borderRadius: 4,
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(0,0,0,0.05)',
+  },
+  handwritten: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 8,
+    color: '#5D4037',
+  },
+  paletteRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  paletteSwatch: {
+    width: 25,
+    height: 25,
+    borderRadius: 12.5,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  vendorCard: {
+    position: "absolute",
+    width: 150,
+    backgroundColor: COLORS.cardBg,
+    padding: 12,
+    borderRadius: 12,
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 5,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  vendorTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 8,
+    color: COLORS.text,
+  },
+  activitiesSection: {
+    position: 'absolute',
+    width: 200,
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
   },
   activitiesTitle: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#342F2A',
-    marginBottom: 8,
-    textAlign: 'center',
+    fontWeight: '800',
+    color: COLORS.text,
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   activitiesList: {
-    gap: 6,
+    gap: 8,
   },
   activityItem: {
-    paddingVertical: 4,
+    paddingVertical: 6,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
+    borderBottomColor: COLORS.background,
   },
   activityText: {
     fontSize: 12,
-    color: '#342F2A',
+    color: COLORS.text,
     fontWeight: '500',
   },
   activityTime: {
     fontSize: 10,
-    color: '#746C64',
+    color: COLORS.textMuted,
     marginTop: 2,
   },
   noActivityText: {
     fontSize: 12,
-    color: '#746C64',
+    color: COLORS.textMuted,
     textAlign: 'center',
     fontStyle: 'italic',
   },
   noteBox: {
-  position: "absolute",
-  top: 100,
-  right: 20,
-  width: 140,
-  height: 120,
-  backgroundColor: "#fff",
-  borderRadius: 6,
-  padding: 10,
-  shadowColor: "#000",
-  shadowOpacity: 0.2,
-  shadowRadius: 5,
-  shadowOffset: { width: 2, height: 2 },
-  elevation: 4,
-  transform: [{ rotate: "-5deg" }], // 👈 makes it feel like a pinned sticky note
-},
-noteTitle: {
-  fontSize: 14,
-  fontWeight: "600",
-  marginBottom: 6,
-  color: "#342F2A",
-  fontFamily:"Noteworthy-Bold",
-},
-noteText: {
-  fontSize: 13,
-  lineHeight: 18,
-  color: "#444",
-  fontFamily:"Bradley Hand",
-}
+    position: "absolute",
+    top: 90,
+    right: 20,
+    width: 150,
+    height: 130,
+    backgroundColor: "#E1F5FE", // Soft blue note
+    borderRadius: 4,
+    padding: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 4,
+    transform: [{ rotate: "-3deg" }],
+  },
+  noteTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 6,
+    color: "#0277BD",
+  },
+  noteText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: "#01579B",
+    fontWeight: '500',
+  }
 });

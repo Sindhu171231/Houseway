@@ -188,9 +188,9 @@ export const ProjectsHeader = ({ onAddPress, onSearchPress }) => (
 
       <TouchableOpacity style={styles.modernAddButton} onPress={onAddPress}>
         <View style={styles.buttonIconContainer}>
-          <Text style={[styles.modernButtonIcon, { color: theme.colors.primary.main }]}>➕</Text>
+          <Text style={[styles.modernButtonIcon, { color: theme.colors.primary[500] }]}>➕</Text>
         </View>
-        <Text style={[styles.modernButtonText, { color: theme.colors.primary.main }]}>New Project</Text>
+        <Text style={[styles.modernButtonText, { color: theme.colors.primary[500] }]}>New Project</Text>
       </TouchableOpacity>
     </View>
   </ModernHeader>

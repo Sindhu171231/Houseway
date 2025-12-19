@@ -32,65 +32,65 @@ const ViewInvoicesScreen = ({ route, navigation }) => {
   }, [projectId]);
 
   const fetchInvoices = async () => {
-  try {
-    const token = await AsyncStorage.getItem("@houseway_token");
-    if (!token) {
-      Alert.alert("Error", "Authentication token not found");
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    console.log("📥 Fetching invoices for project:", projectId);
-    
-    const response = await api.get(`/files/invoices?projectId=${projectId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    console.log("✅ Response:", JSON.stringify(response.data, null, 2));
-
-    // Handle multiple possible response structures
-    let files = [];
-    
-    if (response.data?.success) {
-      // Try different paths
-      if (response.data?.data?.files) {
-        files = response.data.data.files;
-      } else if (Array.isArray(response.data?.data)) {
-        files = response.data.data;
-      } else if (response.data?.files) {
-        files = response.data.files;
+    try {
+      const token = await AsyncStorage.getItem("@houseway_token");
+      if (!token) {
+        Alert.alert("Error", "Authentication token not found");
+        setLoading(false);
+        return;
       }
-    } else if (response.data?.files) {
-      // Sometimes success flag might not exist
-      files = response.data.files;
-    } else if (Array.isArray(response.data)) {
-      // Response might be array directly
-      files = response.data;
+
+      setLoading(true);
+      console.log("📥 Fetching invoices for project:", projectId);
+
+      const response = await api.get(`/files/invoices?projectId=${projectId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      console.log("✅ Response:", JSON.stringify(response.data, null, 2));
+
+      // Handle multiple possible response structures
+      let files = [];
+
+      if (response.data?.success) {
+        // Try different paths
+        if (response.data?.data?.files) {
+          files = response.data.data.files;
+        } else if (Array.isArray(response.data?.data)) {
+          files = response.data.data;
+        } else if (response.data?.files) {
+          files = response.data.files;
+        }
+      } else if (response.data?.files) {
+        // Sometimes success flag might not exist
+        files = response.data.files;
+      } else if (Array.isArray(response.data)) {
+        // Response might be array directly
+        files = response.data;
+      }
+
+      console.log(`📊 Found ${files.length} invoices:`, files);
+      setInvoices(files);
+
+      if (files.length === 0) {
+        console.log("⚠️ No invoices found - check if they exist in database");
+      }
+
+    } catch (error) {
+      console.error("❌ Fetch Invoices Error:", error);
+      console.error("❌ Error Details:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+      Alert.alert(
+        "Error",
+        error.response?.data?.message || "Could not fetch invoices. Please try again."
+      );
+    } finally {
+      setLoading(false);
     }
-
-    console.log(`📊 Found ${files.length} invoices:`, files);
-    setInvoices(files);
-
-    if (files.length === 0) {
-      console.log("⚠️ No invoices found - check if they exist in database");
-    }
-
-  } catch (error) {
-    console.error("❌ Fetch Invoices Error:", error);
-    console.error("❌ Error Details:", {
-      message: error.message,
-      response: error.response?.data,
-      status: error.response?.status,
-    });
-    Alert.alert(
-      "Error", 
-      error.response?.data?.message || "Could not fetch invoices. Please try again."
-    );
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -139,158 +139,158 @@ const ViewInvoicesScreen = ({ route, navigation }) => {
     }
   };
 
- const renderInvoiceCard = (invoice, index) => {
-  // Clean and encode the URL properly
-  let imageUrl = invoice.url;
-  
-  // Replace spaces with %20
-  if (imageUrl) {
-    imageUrl = imageUrl.replace(/ /g, '%20');
-  }
-  
-  const hasImage = imageUrl && (
-    imageUrl.startsWith('http://') || 
-    imageUrl.startsWith('https://')
-  );
-  
-  const invoiceDate = invoice.invoiceDate || invoice.uploadedAt;
+  const renderInvoiceCard = (invoice, index) => {
+    // Clean and encode the URL properly
+    let imageUrl = invoice.url;
 
-  // 🔥 DETAILED LOGGING
-  console.log('='.repeat(50));
-  console.log(`📸 Invoice ${index + 1}:`, invoice.originalName);
-  console.log('Original URL:', invoice.url);
-  console.log('Cleaned URL:', imageUrl);
-  console.log('Has Image:', hasImage);
-  console.log('MIME Type:', invoice.mimeType);
-  console.log('='.repeat(50));
+    // Replace spaces with %20
+    if (imageUrl) {
+      imageUrl = imageUrl.replace(/ /g, '%20');
+    }
 
-  return (
-    <View key={invoice._id || index} style={styles.card}>
-      {/* Image Section */}
-      <TouchableOpacity
-        style={styles.imageContainer}
-        onPress={() => handleImagePress(invoice)}
-        activeOpacity={0.9}
-        disabled={!hasImage}
-      >
-        {hasImage ? (
-          <>
-            <Image
-              source={{ uri: imageUrl }}
-              style={styles.image}
-              resizeMode="cover"
-              onLoadStart={() => {
-                console.log(`🔄 Loading started: ${invoice.originalName}`);
-              }}
-              onLoad={(e) => {
-                console.log(`✅ Image loaded successfully: ${invoice.originalName}`);
-                console.log('Image dimensions:', e.nativeEvent.source);
-              }}
-              onError={(error) => {
-                console.error(`❌ Image load FAILED: ${invoice.originalName}`);
-                console.error('Error details:', error.nativeEvent);
-                console.error('Failed URL:', imageUrl);
-              }}
-              onProgress={(e) => {
-                console.log(`📊 Loading progress: ${Math.round((e.nativeEvent.loaded / e.nativeEvent.total) * 100)}%`);
-              }}
-            />
-            {/* Debug overlay - Remove after fixing */}
-            <View style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              backgroundColor: 'rgba(0,0,0,0.5)',
-              padding: 4,
-            }}>
-              <Text style={{ color: 'white', fontSize: 10 }} numberOfLines={2}>
-                {imageUrl}
+    const hasImage = imageUrl && (
+      imageUrl.startsWith('http://') ||
+      imageUrl.startsWith('https://')
+    );
+
+    const invoiceDate = invoice.invoiceDate || invoice.uploadedAt;
+
+    // 🔥 DETAILED LOGGING
+    console.log('='.repeat(50));
+    console.log(`📸 Invoice ${index + 1}:`, invoice.originalName);
+    console.log('Original URL:', invoice.url);
+    console.log('Cleaned URL:', imageUrl);
+    console.log('Has Image:', hasImage);
+    console.log('MIME Type:', invoice.mimeType);
+    console.log('='.repeat(50));
+
+    return (
+      <View key={invoice._id || index} style={styles.card}>
+        {/* Image Section */}
+        <TouchableOpacity
+          style={styles.imageContainer}
+          onPress={() => handleImagePress(invoice)}
+          activeOpacity={0.9}
+          disabled={!hasImage}
+        >
+          {hasImage ? (
+            <>
+              <Image
+                source={{ uri: imageUrl }}
+                style={styles.image}
+                resizeMode="cover"
+                onLoadStart={() => {
+                  console.log(`🔄 Loading started: ${invoice.originalName}`);
+                }}
+                onLoad={(e) => {
+                  console.log(`✅ Image loaded successfully: ${invoice.originalName}`);
+                  console.log('Image dimensions:', e.nativeEvent.source);
+                }}
+                onError={(error) => {
+                  console.error(`❌ Image load FAILED: ${invoice.originalName}`);
+                  console.error('Error details:', error.nativeEvent);
+                  console.error('Failed URL:', imageUrl);
+                }}
+                onProgress={(e) => {
+                  console.log(`📊 Loading progress: ${Math.round((e.nativeEvent.loaded / e.nativeEvent.total) * 100)}%`);
+                }}
+              />
+              {/* Debug overlay - Remove after fixing */}
+              <View style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                padding: 4,
+              }}>
+                <Text style={{ color: 'white', fontSize: 10 }} numberOfLines={2}>
+                  {imageUrl}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <View style={styles.noImage}>
+              <Feather name="image" size={48} color="#C9B89A" />
+              <Text style={styles.noImageText}>No preview available</Text>
+              <Text style={{ fontSize: 10, color: '#999', marginTop: 4 }}>
+                {invoice.url || 'No URL'}
               </Text>
             </View>
-          </>
-        ) : (
-          <View style={styles.noImage}>
-            <Feather name="image" size={48} color="#C9B89A" />
-            <Text style={styles.noImageText}>No preview available</Text>
-            <Text style={{ fontSize: 10, color: '#999', marginTop: 4 }}>
-              {invoice.url || 'No URL'}
-            </Text>
-          </View>
-        )}
-        
-        {/* Image Overlay */}
-        {hasImage && (
-          <View style={styles.imageOverlay}>
-            <Feather name="maximize-2" size={20} color="#fff" />
-          </View>
-        )}
-      </TouchableOpacity>
+          )}
 
-      {/* Details Section - Keep existing */}
-      <View style={styles.cardContent}>
-        {/* ... your existing card content ... */}
-        <View style={styles.cardHeader}>
-          <View style={styles.fileNameContainer}>
-            <Feather name="file-text" size={16} color="#3E60D8" />
-            <Text style={styles.fileName} numberOfLines={1}>
-              {invoice.originalName || invoice.filename || "Invoice"}
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={() => handleDelete(invoice)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Feather name="trash-2" size={18} color="#D75A5A" />
-          </TouchableOpacity>
-        </View>
+          {/* Image Overlay */}
+          {hasImage && (
+            <View style={styles.imageOverlay}>
+              <Feather name="maximize-2" size={20} color="#fff" />
+            </View>
+          )}
+        </TouchableOpacity>
 
-        {invoice.invoiceInfo && (
+        {/* Details Section - Keep existing */}
+        <View style={styles.cardContent}>
+          {/* ... your existing card content ... */}
+          <View style={styles.cardHeader}>
+            <View style={styles.fileNameContainer}>
+              <Feather name="file-text" size={16} color="#3E60D8" />
+              <Text style={styles.fileName} numberOfLines={1}>
+                {invoice.originalName || invoice.filename || "Invoice"}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={() => handleDelete(invoice)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Feather name="trash-2" size={18} color="#D75A5A" />
+            </TouchableOpacity>
+          </View>
+
+          {invoice.invoiceInfo && (
+            <View style={styles.infoRow}>
+              <Feather name="info" size={14} color="#7487C1" />
+              <Text style={styles.infoText} numberOfLines={2}>
+                {invoice.invoiceInfo}
+              </Text>
+            </View>
+          )}
+
           <View style={styles.infoRow}>
-            <Feather name="info" size={14} color="#7487C1" />
-            <Text style={styles.infoText} numberOfLines={2}>
-              {invoice.invoiceInfo}
-            </Text>
-          </View>
-        )}
-
-        <View style={styles.infoRow}>
-          <Feather name="calendar" size={14} color="#7487C1" />
-          <Text style={styles.dateText}>
-            {new Date(invoiceDate).toLocaleDateString('en-US', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })}
-          </Text>
-        </View>
-
-        <View style={styles.cardFooter}>
-          <View style={styles.uploadedInfo}>
-            <Feather name="upload" size={12} color="#7487C1" />
-            <Text style={styles.uploadedText}>
-              Uploaded {new Date(invoice.uploadedAt).toLocaleDateString('en-US', {
-                month: 'short',
+            <Feather name="calendar" size={14} color="#7487C1" />
+            <Text style={styles.dateText}>
+              {new Date(invoiceDate).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
                 day: 'numeric',
               })}
             </Text>
           </View>
-          
-          {hasImage && (
-            <TouchableOpacity
-              style={styles.viewButton}
-              onPress={() => handleImagePress(invoice)}
-            >
-              <Feather name="eye" size={16} color="#3E60D8" />
-              <Text style={styles.viewButtonText}>View</Text>
-            </TouchableOpacity>
-          )}
+
+          <View style={styles.cardFooter}>
+            <View style={styles.uploadedInfo}>
+              <Feather name="upload" size={12} color="#7487C1" />
+              <Text style={styles.uploadedText}>
+                Uploaded {new Date(invoice.uploadedAt).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                })}
+              </Text>
+            </View>
+
+            {hasImage && (
+              <TouchableOpacity
+                style={styles.viewButton}
+                onPress={() => handleImagePress(invoice)}
+              >
+                <Feather name="eye" size={16} color="#3E60D8" />
+                <Text style={styles.viewButtonText}>View</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
-    </View>
-  );
-};
+    );
+  };
   return (
     <View style={styles.container}>
       {/* Wave Header */}
@@ -333,6 +333,7 @@ const ViewInvoicesScreen = ({ route, navigation }) => {
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
@@ -353,8 +354,8 @@ const ViewInvoicesScreen = ({ route, navigation }) => {
                 {invoices.filter(inv => {
                   const date = new Date(inv.uploadedAt);
                   const now = new Date();
-                  return date.getMonth() === now.getMonth() && 
-                         date.getFullYear() === now.getFullYear();
+                  return date.getMonth() === now.getMonth() &&
+                    date.getFullYear() === now.getFullYear();
                 }).length}
               </Text>
               <Text style={styles.statLabel}>This Month</Text>

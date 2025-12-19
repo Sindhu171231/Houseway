@@ -16,24 +16,27 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../context/AuthContext';
 import { invoicesAPI, projectsAPI } from '../../utils/api';
+import { useAttendance } from '../../context/AttendanceContext';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-// Colors
+// Premium Beige Theme
 const COLORS = {
-    primary: '#FFD700', // Yellow
-    background: '#0D0D0D', // Black
-    cardBg: '#1A1A1A',
-    cardBorder: 'rgba(255, 215, 0, 0.15)',
-    text: '#FFFFFF',
-    textMuted: '#888888',
-    danger: '#FF5252',
-    success: '#00C853',
-    inputBg: '#222222',
+    primary: '#B8860B',        // Dark Golden Rod
+    primaryLight: 'rgba(184, 134, 11, 0.15)',
+    background: '#F5F5F0',     // Beige
+    cardBg: '#FFFFFF',         // White cards
+    cardBorder: 'rgba(184, 134, 11, 0.1)',
+    text: '#1A1A1A',           // Dark text
+    textMuted: '#666666',      // Muted text
+    inputBg: '#FFFFFF',        // White input background
+    danger: '#D32F2F',
+    success: '#388E3C',
 };
 
 const CreateInvoiceScreen = ({ navigation, route }) => {
     const { projectId } = route.params || {};
-    const { user } = useAuth();
+    const { user, isAuthenticated } = useAuth();
+    const { isCheckedIn } = useAttendance();
 
     const [loading, setLoading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
@@ -60,9 +63,24 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
         total: 0
     });
 
+    // UI State
+    const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
+    const [errors, setErrors] = useState({});
+
     useEffect(() => {
+        // Protection: If employee is not checked in, redirect to Check-In screen
+        if (isAuthenticated && user?.role === 'employee' && !isCheckedIn) {
+            if (Platform.OS === 'web') {
+                alert('⏳ Access Denied: You must be Checked-In to create invoices.');
+            } else {
+                Alert.alert('Check-In Required', 'You must be Checked-In to create invoices.');
+            }
+            navigation.replace('CheckIn');
+            return;
+        }
+
         loadInfo();
-    }, []);
+    }, [isAuthenticated, user, isCheckedIn, navigation]);
 
     useEffect(() => {
         calculateTotals();
@@ -136,19 +154,35 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
         setLineItems(newItems);
     };
 
+    const showToast = (message, type = 'success') => {
+        setToast({ visible: true, message, type });
+        setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 3000);
+    };
+
     const handleCreateInvoice = async () => {
         if (!selectedProjectId) {
             Alert.alert('Error', 'Please select a project');
             return;
         }
 
-        // Basic validation
-        for (const item of lineItems) {
+        // Validation
+        const newErrors = {};
+        let hasError = false;
+
+        lineItems.forEach((item, index) => {
             if (!item.description.trim()) {
-                Alert.alert('Error', 'All line items must have a description');
-                return;
+                newErrors[`desc_${index}`] = true;
+                hasError = true;
             }
+        });
+
+        if (hasError) {
+            setErrors(newErrors);
+            showToast('Please fill in all required fields', 'error');
+            return;
         }
+
+        setErrors({}); // Clear errors checks
 
         setSubmitting(true);
         try {
@@ -169,13 +203,14 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
             const response = await invoicesAPI.createInvoice(payload);
 
             if (response.success) {
-                Alert.alert('Success', 'Invoice created successfully', [
-                    { text: 'OK', onPress: () => navigation.goBack() }
-                ]);
+                showToast('Invoice created successfully! Redirecting...', 'success');
+                setTimeout(() => {
+                    navigation.goBack();
+                }, 1500);
             }
         } catch (error) {
             console.error('Create invoice error:', error);
-            Alert.alert('Error', error.response?.data?.message || 'Failed to create invoice');
+            showToast(error.response?.data?.message || 'Failed to create invoice', 'error');
         } finally {
             setSubmitting(false);
         }
@@ -193,7 +228,7 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
         <View style={styles.container}>
             {/* Header */}
             <LinearGradient
-                colors={[COLORS.background, '#1a1a0d', COLORS.cardBg]}
+                colors={[COLORS.background, COLORS.background, COLORS.background]}
                 style={styles.header}
             >
                 <View style={styles.headerTop}>
@@ -205,7 +240,12 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
                 </View>
             </LinearGradient>
 
-            <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent}>
+            <ScrollView
+                style={styles.content}
+                contentContainerStyle={styles.scrollContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+            >
 
                 {/* Project Selection */}
                 <View style={styles.section}>
@@ -280,11 +320,19 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
                             </View>
 
                             <TextInput
-                                style={styles.input}
+                                style={[
+                                    styles.input,
+                                    errors[`desc_${index}`] && styles.inputError
+                                ]}
                                 placeholder="Description"
                                 placeholderTextColor={COLORS.textMuted}
                                 value={item.description}
-                                onChangeText={(text) => handleLineItemChange(index, 'description', text)}
+                                onChangeText={(text) => {
+                                    handleLineItemChange(index, 'description', text);
+                                    if (errors[`desc_${index}`]) {
+                                        setErrors(prev => ({ ...prev, [`desc_${index}`]: false }));
+                                    }
+                                }}
                             />
 
                             <View style={styles.row}>
@@ -310,7 +358,7 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
 
                                 <View style={[styles.halfInput, { flex: 1, alignItems: 'flex-end', justifyContent: 'flex-end', paddingBottom: 12 }]}>
                                     <Text style={styles.totalText}>
-                                        ${((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)).toFixed(2)}
+                                        ₹{((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)).toFixed(2)}
                                     </Text>
                                 </View>
                             </View>
@@ -324,7 +372,7 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
                     <View style={styles.card}>
                         <View style={styles.summaryRow}>
                             <Text style={styles.label}>Subtotal</Text>
-                            <Text style={styles.valueText}>${totals.subtotal.toFixed(2)}</Text>
+                            <Text style={styles.valueText}>₹{totals.subtotal.toFixed(2)}</Text>
                         </View>
 
                         <View style={[styles.summaryRow, { marginTop: 12 }]}>
@@ -338,14 +386,14 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
                                     selectTextOnFocus
                                 />
                             </View>
-                            <Text style={styles.valueText}>${totals.tax.toFixed(2)}</Text>
+                            <Text style={styles.valueText}>₹{totals.tax.toFixed(2)}</Text>
                         </View>
 
                         <View style={styles.divider} />
 
                         <View style={styles.summaryRow}>
                             <Text style={styles.totalLabel}>Total</Text>
-                            <Text style={styles.grandTotal}>${totals.total.toFixed(2)}</Text>
+                            <Text style={styles.grandTotal}>₹{totals.total.toFixed(2)}</Text>
                         </View>
                     </View>
                 </View>
@@ -380,7 +428,7 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
             <View style={styles.footer}>
                 <View style={styles.footerInfo}>
                     <Text style={styles.footerLabel}>Total Amount</Text>
-                    <Text style={styles.footerTotal}>${totals.total.toFixed(2)}</Text>
+                    <Text style={styles.footerTotal}>₹{totals.total.toFixed(2)}</Text>
                 </View>
                 <TouchableOpacity
                     style={styles.createBtn}
@@ -394,6 +442,17 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
                     )}
                 </TouchableOpacity>
             </View>
+            {/* Toast Notification */}
+            {toast.visible && (
+                <View style={[styles.toast, toast.type === 'error' ? styles.toastError : styles.toastSuccess]}>
+                    <Feather
+                        name={toast.type === 'error' ? "alert-circle" : "check-circle"}
+                        size={20}
+                        color="#fff"
+                    />
+                    <Text style={styles.toastText}>{toast.message}</Text>
+                </View>
+            )}
         </View>
     );
 };
@@ -423,7 +482,7 @@ const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: 'rgba(255,215,0,0.1)',
+        backgroundColor: COLORS.primaryLight,
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
@@ -438,7 +497,9 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     scrollContent: {
+        flexGrow: 1,
         padding: 20,
+        paddingBottom: 150,
     },
     section: {
         marginBottom: 24,
@@ -604,9 +665,42 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     createBtnText: {
-        color: COLORS.background,
+        color: '#1F2937', // Dark text on yellow button
         fontWeight: '700',
         fontSize: 16,
+    },
+    inputError: {
+        borderColor: COLORS.danger,
+        borderWidth: 1.5,
+    },
+    toast: {
+        position: 'absolute',
+        bottom: 100,
+        left: 20,
+        right: 20,
+        backgroundColor: '#333',
+        padding: 16,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 6,
+        zIndex: 1000,
+    },
+    toastSuccess: {
+        backgroundColor: COLORS.success,
+    },
+    toastError: {
+        backgroundColor: COLORS.danger,
+    },
+    toastText: {
+        color: '#fff',
+        marginLeft: 12,
+        fontSize: 14,
+        fontWeight: '600',
     },
 });
 

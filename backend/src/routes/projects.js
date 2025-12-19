@@ -152,7 +152,7 @@ router.get('/:id', authenticate, async (req, res) => {
  * @desc    Create new project
  * @access  Private (Owner only)
  */
-router.post('/', authenticate, isOwner, validateProject, async (req, res) => {
+router.post('/', authenticate, isOwnerOrEmployee, validateProject, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -256,9 +256,9 @@ router.post('/', authenticate, isOwner, validateProject, async (req, res) => {
 /**
  * @route   PUT /api/projects/:id
  * @desc    Update project
- * @access  Private (Owner only)
+ * @access  Private (Owner or Employee)
  */
-router.put('/:id', authenticate, isOwner, async (req, res) => {
+router.put('/:id', authenticate, isOwnerOrEmployee, async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
@@ -755,7 +755,7 @@ router.post('/:id/timeline', authenticate, isOwnerOrEmployee, async (req, res) =
 
     // Check if employee is assigned to the project (if not owner)
     if (req.user.role === 'employee' &&
-        !project.assignedEmployees.some(emp => emp._id.toString() === req.user._id.toString())) {
+      !project.assignedEmployees.some(emp => emp._id.toString() === req.user._id.toString())) {
       return res.status(403).json({
         success: false,
         message: 'You are not assigned to this project',
@@ -897,7 +897,7 @@ router.post('/:id/media', authenticate, isOwnerOrEmployee, uploadMultiple('proje
 
     // Check if employee is assigned to the project (if not owner)
     if (req.user.role === 'employee' &&
-        !project.assignedEmployees.some(emp => emp._id.toString() === req.user._id.toString())) {
+      !project.assignedEmployees.some(emp => emp._id.toString() === req.user._id.toString())) {
       return res.status(403).json({
         success: false,
         message: 'You are not assigned to this project',
@@ -914,7 +914,7 @@ router.post('/:id/media', authenticate, isOwnerOrEmployee, uploadMultiple('proje
         originalName: file.originalname,
         url,
         type: file.mimetype.startsWith('image/') ? 'image' :
-              file.mimetype.startsWith('video/') ? 'video' : 'document',
+          file.mimetype.startsWith('video/') ? 'video' : 'document',
         mimeType: file.mimetype,
         size: file.size,
         description,
@@ -1084,7 +1084,7 @@ router.post('/:id/invoices', authenticate, isOwnerOrEmployee, async (req, res) =
 
     // Check if employee is assigned to the project (if not owner)
     if (req.user.role === 'employee' &&
-        !project.assignedEmployees.some(emp => emp._id.toString() === req.user._id.toString())) {
+      !project.assignedEmployees.some(emp => emp._id.toString() === req.user._id.toString())) {
       return res.status(403).json({
         success: false,
         message: 'You are not assigned to this project',

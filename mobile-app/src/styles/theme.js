@@ -1,31 +1,31 @@
-// Professional Dashboard Theme - Dark Blue & Beige
+// Warm Cream & Amber Dashboard Theme
 export const colors = {
-  // Primary Dark Blue Colors
+  // Primary Amber Colors (for buttons and highlights)
   primary: {
-    50: '#f0f4ff',
-    100: '#e0e7ff',
-    200: '#c7d2fe',
-    300: '#a5b4fc',
-    400: '#818cf8',
-    500: '#1e3a8a',    // Main dark blue
-    600: '#1e40af',
-    700: '#1d4ed8',
-    800: '#1e3a8a',
-    900: '#1a202c',
+    50: '#FDFCF0',
+    100: '#FAF7E1',
+    200: '#F5F5F0', // Beige
+    300: '#E6D7BB',
+    400: '#D4AF37', // Gold
+    500: '#B8860B', // Dark Golden Rod
+    600: '#A67C00',
+    700: '#8B6508',
+    800: '#6B4E06',
+    900: '#4A3604',
   },
 
-  // Secondary Beige Colors
+  // Secondary Soft Beige Colors (for accents)
   secondary: {
-    50: '#fefdfb',
-    100: '#fef7ed',
-    200: '#fef3e2',
-    300: '#fdedd3',
-    400: '#fce7c3',
-    500: '#f5deb3',    // Main beige (wheat)
-    600: '#ddb892',
-    700: '#c19a6b',
-    800: '#a0825c',
-    900: '#8b6f47',
+    50: '#FFF9EB',
+    100: '#FDF3E7',
+    200: '#F7E9D8',
+    300: '#EFE0C9',
+    400: '#E6D7BB',
+    500: '#D9CBB0',
+    600: '#CBBFA4',
+    700: '#B5A78E',
+    800: '#9F917A',
+    900: '#8A7C67',
   },
 
   // Success Colors - Green
@@ -63,7 +63,7 @@ export const colors = {
     200: '#ffcc80',
     300: '#ffb74d',
     400: '#ffa726',
-    500: '#ff9800',    // Main warning orange
+    500: '#ff9800',
     600: '#fb8c00',
     700: '#f57c00',
     800: '#ef6c00',
@@ -86,39 +86,39 @@ export const colors = {
     black: '#000000',
   },
 
-  // Background Colors - Professional Style
+  // Background Colors - Warm, light, and clean
   background: {
-    primary: '#fefdfb',      // Very light beige
-    secondary: '#ffffff',    // Pure white
-    tertiary: '#f0f4ff',     // Very light blue
-    card: '#ffffff',         // White cards
-    surface: '#ffffff',      // Surface color
-    overlay: 'rgba(30, 58, 138, 0.6)', // Dark blue overlay
-    accent: '#f5deb3',       // Beige accent
-    dark: '#1e3a8a',         // Dark blue
+    primary: '#F5F5F0', // Premium Beige
+    secondary: '#FFFFFF',
+    tertiary: '#FAF9F6',
+    card: '#FFFFFF',
+    surface: '#FFFFFF',
+    overlay: 'rgba(0, 0, 0, 0.4)',
+    accent: '#E6D7BB',
+    dark: '#1A1A1A',
   },
 
-  // Text Colors - Professional & Readable
+  // Text Colors - High contrast on light backgrounds
   text: {
-    primary: '#0f172a',      // Dark slate
-    secondary: '#475569',    // Medium slate
-    tertiary: '#64748b',     // Light slate
-    muted: '#94a3b8',        // Very light slate
-    white: '#ffffff',        // Pure white
-    inverse: '#ffffff',      // White on dark backgrounds
-    brand: '#1976d2',        // Brand blue
-    success: '#059669',      // Success green
-    warning: '#d97706',      // Warning orange
-    error: '#dc2626',        // Error red
+    primary: '#1A1A1A',
+    secondary: '#4A4A4A',
+    tertiary: '#666666',
+    muted: '#999999',
+    white: '#FFFFFF',
+    inverse: '#FFFFFF',
+    brand: '#B8860B',
+    success: '#388E3C',
+    warning: '#F57C00',
+    error: '#D32F2F',
   },
 
-  // Border Colors - Subtle & Modern
+  // Border Colors - Subtle on light background
   border: {
-    light: '#f1f5f9',        // Very light
-    medium: '#e2e8f0',       // Light
-    dark: '#cbd5e1',         // Medium
-    primary: '#1976d2',      // Brand blue
-    focus: '#3b82f6',        // Focus blue
+    light: 'rgba(184, 134, 11, 0.1)',
+    medium: 'rgba(184, 134, 11, 0.2)',
+    dark: 'rgba(184, 134, 11, 0.3)',
+    primary: '#B8860B',
+    focus: '#A67C00',
   },
 };
 

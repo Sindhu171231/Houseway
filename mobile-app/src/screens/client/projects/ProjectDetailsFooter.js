@@ -1,83 +1,92 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { TouchableOpacity } from 'react-native';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import MediaScreen from './MediaScreen';
 import PaymentsScreen from './PaymentsScreen';
 import CatalogScreen from './CatalogScreen';
 import InspirationScreen from './InspirationScreen';
 import { View, Text } from 'react-native';
-import { Ionicons } from '@expo/vector-icons'; // optional for icons
+import { Ionicons } from '@expo/vector-icons';
 import ProjectOverview from './OverviewPage';
 const Tab = createBottomTabNavigator();
 
 export default function ProjectFooterTabs() {
   const route = useRoute();
+  const navigation = useNavigation();
   const { projectId } = route.params || {};
   return (
     <Tab.Navigator
       screenOptions={{
         headerStyle: {
-          backgroundColor: 'rgba(44,62,80,0.95)', // match footer bg
+          backgroundColor: '#F5F5F0',
+          borderBottomWidth: 1,
+          borderBottomColor: 'rgba(184, 134, 11, 0.1)',
         },
-        headerTintColor: '#fff',
-        headerTitleStyle: { fontSize: 16, fontWeight: '600' },
+        headerTintColor: '#1A1A1A',
+        headerTitleStyle: { fontSize: 16, fontWeight: '700', color: '#B8860B' },
         headerTitleAlign: 'center',
 
-        // 👇 Replace text button with a styled home icon
         headerRight: () => (
           <TouchableOpacity
             onPress={() => navigation.navigate('Dashboard')}
             style={{ marginRight: 16 }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="home-outline" size={22} color="#d4bda5" />
+            <Ionicons name="home-outline" size={22} color="#B8860B" />
           </TouchableOpacity>
         ),
         tabBarStyle: {
-          backgroundColor: 'rgba(44,62,80,0.9)', // matches var(--secondary-color)/90
+          backgroundColor: '#FFFFFF',
           borderTopWidth: 1,
-          borderTopColor: 'rgba(255,255,255,0.1)',
+          borderTopColor: 'rgba(184, 134, 11, 0.1)',
+          elevation: 10,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.05,
+          shadowRadius: 4,
+          height: 60,
+          paddingBottom: 10,
         },
-        tabBarActiveTintColor: '#d4bda5', // primary color
-        tabBarInactiveTintColor: 'rgba(255,255,255,0.6)',
-        tabBarLabelStyle: { fontSize: 10 },
+        tabBarActiveTintColor: '#B8860B',
+        tabBarInactiveTintColor: '#666666',
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
       }}
     >
-      <Tab.Screen 
-        name="Overview" 
-        component={ProjectOverview} 
+      <Tab.Screen
+        name="Overview"
+        component={ProjectOverview}
         initialParams={{ projectId }}
         options={{
           tabBarIcon: ({ color, size }) => <Ionicons name="time-outline" size={size} color={color} />
         }}
       />
-      <Tab.Screen 
-        name="Media" 
-        component={MediaScreen} 
+      <Tab.Screen
+        name="Media"
+        component={MediaScreen}
         initialParams={{ projectId }}
         options={{
           tabBarIcon: ({ color, size }) => <Ionicons name="images-outline" size={size} color={color} />
         }}
       />
-      <Tab.Screen 
-        name="Payments" 
-        component={PaymentsScreen} 
+      <Tab.Screen
+        name="Payments"
+        component={PaymentsScreen}
         initialParams={{ projectId }}
         options={{
           tabBarIcon: ({ color, size }) => <Ionicons name="card-outline" size={size} color={color} />
         }}
       />
-      <Tab.Screen 
-        name="Catalog" 
-        component={CatalogScreen} 
+      <Tab.Screen
+        name="Catalog"
+        component={CatalogScreen}
         initialParams={{ projectId }}
         options={{
           tabBarIcon: ({ color, size }) => <Ionicons name="book-outline" size={size} color={color} />
         }}
       />
-      <Tab.Screen 
-        name="Inspiration" 
-        component={InspirationScreen} 
+      <Tab.Screen
+        name="Inspiration"
+        component={InspirationScreen}
         initialParams={{ projectId }}
         options={{
           tabBarIcon: ({ color, size }) => <Ionicons name="sparkles-outline" size={size} color={color} />

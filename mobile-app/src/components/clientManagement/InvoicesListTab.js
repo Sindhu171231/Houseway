@@ -73,7 +73,7 @@ const InvoicesListTab = ({ projectId, navigation }) => {
     };
 
     const formatCurrency = (amount) => {
-        return `$${(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+        return `₹${(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
     };
 
     const renderInvoice = ({ item }) => {
@@ -82,7 +82,7 @@ const InvoicesListTab = ({ projectId, navigation }) => {
         return (
             <TouchableOpacity
                 style={styles.invoiceCard}
-                onPress={() => navigation.navigate('ViewInvoice', { invoiceId: item._id })}
+                onPress={() => navigation.navigate('ViewInvoice', { invoice: item })}
                 activeOpacity={0.8}
             >
                 <View style={styles.invoiceHeader}>

@@ -109,7 +109,7 @@ const clientInvoiceSchema = new mongoose.Schema({
     type: Date,
     required: [true, 'Due date is required'],
     validate: {
-      validator: function(value) {
+      validator: function (value) {
         return value >= this.issueDate;
       },
       message: 'Due date must be on or after issue date'
@@ -203,24 +203,24 @@ clientInvoiceSchema.index({ dueDate: 1 });
 clientInvoiceSchema.index({ createdBy: 1 });
 
 // Virtual for formatted currency amounts
-clientInvoiceSchema.virtual('formattedSubtotal').get(function() {
+clientInvoiceSchema.virtual('formattedSubtotal').get(function () {
   return this.formatCurrency(this.subtotal);
 });
 
-clientInvoiceSchema.virtual('formattedTaxAmount').get(function() {
+clientInvoiceSchema.virtual('formattedTaxAmount').get(function () {
   return this.formatCurrency(this.taxAmount);
 });
 
-clientInvoiceSchema.virtual('formattedDiscountAmount').get(function() {
+clientInvoiceSchema.virtual('formattedDiscountAmount').get(function () {
   return this.formatCurrency(this.discountAmount);
 });
 
-clientInvoiceSchema.virtual('formattedTotalAmount').get(function() {
+clientInvoiceSchema.virtual('formattedTotalAmount').get(function () {
   return this.formatCurrency(this.totalAmount);
 });
 
 // Virtual for days until due
-clientInvoiceSchema.virtual('daysUntilDue').get(function() {
+clientInvoiceSchema.virtual('daysUntilDue').get(function () {
   const now = new Date();
   const diffTime = this.dueDate - now;
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -228,12 +228,12 @@ clientInvoiceSchema.virtual('daysUntilDue').get(function() {
 });
 
 // Virtual for is overdue
-clientInvoiceSchema.virtual('isOverdue').get(function() {
+clientInvoiceSchema.virtual('isOverdue').get(function () {
   return this.status !== 'paid' && this.status !== 'cancelled' && this.daysUntilDue < 0;
 });
 
 // Virtual for formatted issue date
-clientInvoiceSchema.virtual('formattedIssueDate').get(function() {
+clientInvoiceSchema.virtual('formattedIssueDate').get(function () {
   return this.issueDate.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -242,7 +242,7 @@ clientInvoiceSchema.virtual('formattedIssueDate').get(function() {
 });
 
 // Virtual for formatted due date
-clientInvoiceSchema.virtual('formattedDueDate').get(function() {
+clientInvoiceSchema.virtual('formattedDueDate').get(function () {
   return this.dueDate.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -251,7 +251,7 @@ clientInvoiceSchema.virtual('formattedDueDate').get(function() {
 });
 
 // Pre-find middleware to populate related data
-clientInvoiceSchema.pre(/^find/, function(next) {
+clientInvoiceSchema.pre(/^find/, function (next) {
   this.populate({
     path: 'clientId',
     select: 'firstName lastName email company phone address'
@@ -271,8 +271,8 @@ clientInvoiceSchema.pre(/^find/, function(next) {
   next();
 });
 
-// Pre-save middleware to calculate totals
-clientInvoiceSchema.pre('save', function(next) {
+// Pre-validate middleware to calculate totals
+clientInvoiceSchema.pre('validate', function (next) {
   // Calculate subtotal from line items
   this.subtotal = this.lineItems.reduce((total, item) => {
     return total + (item.quantity * item.unitPrice);
@@ -305,8 +305,8 @@ clientInvoiceSchema.pre('save', function(next) {
   next();
 });
 
-// Pre-save middleware to generate invoice number
-clientInvoiceSchema.pre('save', async function(next) {
+// Pre-validate middleware to generate invoice number
+clientInvoiceSchema.pre('validate', async function (next) {
   if (!this.invoiceNumber) {
     const year = new Date().getFullYear();
     const count = await this.constructor.countDocuments({
@@ -322,7 +322,7 @@ clientInvoiceSchema.pre('save', async function(next) {
 });
 
 // Instance method to format currency
-clientInvoiceSchema.methods.formatCurrency = function(amount) {
+clientInvoiceSchema.methods.formatCurrency = function (amount) {
   const symbols = {
     USD: '$',
     EUR: '€',
@@ -336,14 +336,14 @@ clientInvoiceSchema.methods.formatCurrency = function(amount) {
 };
 
 // Instance method to mark as sent
-clientInvoiceSchema.methods.markAsSent = function() {
+clientInvoiceSchema.methods.markAsSent = function () {
   this.status = 'sent';
   this.sentDate = new Date();
   return this.save();
 };
 
 // Instance method to mark as viewed
-clientInvoiceSchema.methods.markAsViewed = function() {
+clientInvoiceSchema.methods.markAsViewed = function () {
   if (this.status === 'sent') {
     this.status = 'viewed';
     this.viewedDate = new Date();
@@ -353,7 +353,7 @@ clientInvoiceSchema.methods.markAsViewed = function() {
 };
 
 // Instance method to mark as paid
-clientInvoiceSchema.methods.markAsPaid = function(paymentMethod, paidDate = new Date()) {
+clientInvoiceSchema.methods.markAsPaid = function (paymentMethod, paidDate = new Date()) {
   this.status = 'paid';
   this.paymentMethod = paymentMethod;
   this.paidDate = paidDate;
@@ -361,7 +361,7 @@ clientInvoiceSchema.methods.markAsPaid = function(paymentMethod, paidDate = new 
 };
 
 // Instance method to calculate late fee
-clientInvoiceSchema.methods.calculateLateFee = function() {
+clientInvoiceSchema.methods.calculateLateFee = function () {
   if (!this.lateFeeSettings.enabled || !this.isOverdue) {
     return 0;
   }
@@ -381,7 +381,7 @@ clientInvoiceSchema.methods.calculateLateFee = function() {
 };
 
 // Static method to get invoices for a client
-clientInvoiceSchema.statics.getClientInvoices = function(clientId, options = {}) {
+clientInvoiceSchema.statics.getClientInvoices = function (clientId, options = {}) {
   const {
     page = 1,
     limit = 20,
@@ -409,18 +409,18 @@ clientInvoiceSchema.statics.getClientInvoices = function(clientId, options = {})
 };
 
 // Static method to get overdue invoices
-clientInvoiceSchema.statics.getOverdueInvoices = function() {
+clientInvoiceSchema.statics.getOverdueInvoices = function () {
   const now = new Date();
   return this.find({
     status: { $in: ['sent', 'viewed'] },
     dueDate: { $lt: now }
   })
-  .sort({ dueDate: 1 })
-  .exec();
+    .sort({ dueDate: 1 })
+    .exec();
 };
 
 // Static method to get invoice statistics
-clientInvoiceSchema.statics.getInvoiceStats = function(clientId = null, startDate = null, endDate = null) {
+clientInvoiceSchema.statics.getInvoiceStats = function (clientId = null, startDate = null, endDate = null) {
   const matchStage = {};
   if (clientId) matchStage.clientId = new mongoose.Types.ObjectId(clientId);
   if (startDate || endDate) {

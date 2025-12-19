@@ -50,7 +50,7 @@ const LoginSelectionScreen = ({ navigation }) => {
     <View style={styles.container}>
       {/* Background with gradient and floating blobs */}
       <LinearGradient
-        colors={['#3E60D8', '#566FE0', '#7487C1', '#FBF7EE']}
+        colors={['#F5F5F0', '#E6D7BB', '#FBF7EE']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.backgroundGradient}
@@ -65,6 +65,7 @@ const LoginSelectionScreen = ({ navigation }) => {
       {/* Content */}
       <ScrollView
         contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
@@ -83,7 +84,7 @@ const LoginSelectionScreen = ({ navigation }) => {
               onPressOut={() => handleCardPressOut(cardScale1)}
               onPress={handleProjectDashboardPress}>
               <View style={styles.cardIconContainer}>
-                <Feather name="briefcase" size={40} color="#3E60D8" />
+                <Feather name="briefcase" size={40} color="#B8860B" />
               </View>
               <Text style={styles.cardTitle}>Project Dashboard</Text>
               <Text style={styles.cardDescription}>
@@ -123,7 +124,7 @@ const LoginSelectionScreen = ({ navigation }) => {
               onPressOut={() => handleCardPressOut(cardScale2)}
               onPress={handleClientManagementPress}>
               <LinearGradient
-                colors={['#121212', '#2C2C2C']}
+                colors={['#B8860B', '#8B6508']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.clientManagementGradient}>

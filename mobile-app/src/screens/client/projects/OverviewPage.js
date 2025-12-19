@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
+  TouchableOpacity,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DynamicElevatorTimeline from "./TimelineScreen";
@@ -65,13 +66,18 @@ export default function ProjectOverview({ route, navigation }) {
   console.log("✅ Rendering project:", project.title);
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.scrollContent}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
       {/* Project Header Card */}
       <View style={styles.card}>
         <Text style={styles.title}>{project.title}</Text>
         <Text style={styles.subtitle}>
-          {project.location?.city && project.location?.state 
-            ? `${project.location.city}, ${project.location.state}` 
+          {project.location?.city && project.location?.state
+            ? `${project.location.city}, ${project.location.state}`
             : project.location?.address || "Location not specified"}
         </Text>
 
@@ -115,42 +121,82 @@ export default function ProjectOverview({ route, navigation }) {
           <Text style={styles.tagBlue}>{activity.tag}</Text>
         </View>
       ))}
+
+      {/* Meet the Team */}
+      <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Meet Your Design Team</Text>
+      {project.assignedEmployees && project.assignedEmployees.map((member, index) => (
+        <View key={index} style={styles.teamMemberCard}>
+          <View style={styles.teamAvatar}>
+            <Text style={styles.avatarText}>{member.firstName?.[0]}{member.lastName?.[0]}</Text>
+          </View>
+          <View style={styles.teamInfo}>
+            <Text style={styles.teamName}>{member.firstName} {member.lastName}</Text>
+            <Text style={styles.teamRole}>{member.employeeDetails?.position || 'Project Designer'}</Text>
+          </View>
+          <TouchableOpacity style={styles.contactIcon}>
+            <Ionicons name="chatbubble-ellipses-outline" size={20} color="#9B59B6" />
+          </TouchableOpacity>
+        </View>
+      ))}
+      <View style={{ height: 40 }} />
     </ScrollView>
   );
 }
 
+const COLORS = {
+  primary: '#f1d794ff',        // Dark Golden Rod
+  primaryLight: 'rgba(184, 134, 11, 0.15)',
+  background: '#F5F5F0',     // Beige
+  cardBg: '#FFFFFF',         // White
+  cardBorder: 'rgba(184, 134, 11, 0.1)',
+  text: '#1A1A1A',           // Dark text
+  textMuted: '#666666',      // Muted text
+  success: '#388E3C',
+  warning: '#F57C00',
+  danger: '#D32F2F',
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FAF7EF",
+    backgroundColor: COLORS.background,
+  },
+  scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: 16,
     paddingTop: 20,
+    paddingBottom: 150,
   },
   centered: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: COLORS.background,
   },
   card: {
-    backgroundColor: "white",
+    backgroundColor: COLORS.cardBg,
     borderRadius: 20,
     padding: 20,
     marginBottom: 20,
     shadowColor: "#000",
     shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
   },
   title: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#2C3E50",
+    fontSize: 24,
+    fontWeight: "800",
+    color: COLORS.text,
+    marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
-    color: "#777",
-    marginBottom: 12,
+    color: COLORS.textMuted,
+    marginBottom: 16,
+    fontWeight: '500',
   },
   rowBetween: {
     flexDirection: "row",
@@ -158,15 +204,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statusBadge: {
-    backgroundColor: "#E8F9E9",
+    backgroundColor: COLORS.primaryLight,
     paddingVertical: 6,
     paddingHorizontal: 14,
     borderRadius: 12,
   },
   statusText: {
-    color: "#27AE60",
-    fontSize: 13,
-    fontWeight: "600",
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   dateRow: {
     flexDirection: "row",
@@ -175,58 +223,111 @@ const styles = StyleSheet.create({
   dateText: {
     marginLeft: 6,
     fontSize: 12,
-    color: "#555",
+    color: COLORS.textMuted,
+    fontWeight: '600',
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 12,
-    color: "#2C3E50",
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 16,
+    color: COLORS.text,
+    letterSpacing: 0.5,
   },
   progressBadge: {
-    backgroundColor: "#DFF6E6",
+    backgroundColor: 'rgba(56, 142, 60, 0.1)',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 4,
   },
   progressText: {
     fontSize: 12,
-    fontWeight: "600",
-    color: "#27AE60",
+    fontWeight: "700",
+    color: COLORS.success,
   },
   activityCard: {
-    backgroundColor: "white",
+    backgroundColor: COLORS.cardBg,
     borderRadius: 16,
     flexDirection: "row",
     alignItems: "center",
     padding: 16,
     marginBottom: 12,
     shadowColor: "#000",
-    shadowOpacity: 0.04,
+    shadowOpacity: 0.03,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
   },
   activityTextBox: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 16,
   },
   activityTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.text,
   },
   activitySub: {
     fontSize: 12,
-    color: "#888",
+    color: COLORS.textMuted,
+    marginTop: 2,
   },
   tagBlue: {
-    fontSize: 12,
-    color: "white",
-    backgroundColor: "#3498DB",
+    fontSize: 11,
+    color: COLORS.cardBg,
+    backgroundColor: COLORS.primary,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
     overflow: "hidden",
+    fontWeight: '700',
+  },
+  teamMemberCard: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  teamAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: COLORS.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarText: {
+    color: COLORS.primary,
+    fontWeight: "800",
+    fontSize: 16,
+  },
+  teamInfo: {
+    flex: 1,
+    marginLeft: 16,
+  },
+  teamName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  teamRole: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  contactIcon: {
+    padding: 10,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryLight,
   },
 });

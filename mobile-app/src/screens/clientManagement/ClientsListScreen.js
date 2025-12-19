@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,102 +7,115 @@ import {
   RefreshControl,
   Dimensions,
   TouchableOpacity,
-  Animated,
   TextInput,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
-
-// Import components
-import StatusRibbonCard from '../../components/clientManagement/StatusRibbonCard';
-import WaveHeader from '../../components/clientManagement/WaveHeader';
-import { clientsAPI } from '../../utils/api';
+import { clientsAPI, projectsAPI } from '../../utils/api';
+import { useAttendance } from '../../context/AttendanceContext';
+import BottomNavBar from '../../components/common/BottomNavBar';
 
 const { width } = Dimensions.get('window');
 
+// Light Cream/Yellow Theme
+// Premium Beige Theme
+const COLORS = {
+  primary: '#cda236ff',        // Dark Golden Rod
+  primaryLight: 'rgba(184, 134, 11, 0.15)',
+  background: '#F5F5F0',     // Beige
+  cardBg: '#FFFFFF',         // White cards
+  cardBorder: 'rgba(184, 134, 11, 0.1)',
+  text: '#1A1A1A',           // Dark text
+  textMuted: '#666666',      // Muted text
+  textDim: '#999999',        // Dim text
+  activeTab: '#B8860B',
+  pastTab: '#666666',
+  success: '#388E3C',
+  danger: '#D32F2F',
+};
+
 const ClientsListScreen = ({ navigation }) => {
   const { user, isAuthenticated } = useAuth();
+  const { isCheckedIn } = useAttendance();
   const [clients, setClients] = useState([]);
   const [filteredClients, setFilteredClients] = useState([]);
+  const [clientProjects, setClientProjects] = useState({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState('All');
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [activeTab, setActiveTab] = useState('Active');
 
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
+  useEffect(() => {
+    // Protection: If employee is not checked in, redirect to Check-In screen
+    if (isAuthenticated && user?.role === 'employee' && !isCheckedIn) {
+      if (Platform.OS === 'web') {
+        alert('⏳ Access Denied: You must be Checked-In to access this section.');
+      } else {
+        Alert.alert('Check-In Required', 'You must be Checked-In to access this section.');
+      }
+      navigation.replace('CheckIn');
+      return;
+    }
 
-  const filters = ['All', 'Active', 'At Risk', 'Pending', 'Inactive'];
+    if (isAuthenticated && user) {
+      loadClients();
+    } else {
+      setLoading(false);
+    }
+  }, [isAuthenticated, user, isCheckedIn, navigation]);
+
+
+  useEffect(() => {
+    filterClients();
+  }, [searchQuery, clients]);
 
   useEffect(() => {
     if (isAuthenticated && user) {
       loadClients();
-      animateIn();
-    } else {
-      setLoading(false);
     }
-  }, [isAuthenticated, user]);
-
-  useEffect(() => {
-    filterClients();
-  }, [searchQuery, activeFilter, clients]);
-
-  const animateIn = () => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
+  }, [activeTab]);
 
   const loadClients = async (isRefresh = false) => {
     try {
-      // Check if user is authenticated before making API call
       if (!isAuthenticated || !user) {
-        console.log('User not authenticated, skipping clients load');
         setLoading(false);
-        setRefreshing(false);
         return;
       }
-      
+
       if (isRefresh) {
         setRefreshing(true);
-        setPage(1);
-        setHasMore(true);
       } else {
         setLoading(true);
       }
 
-      const currentPage = isRefresh ? 1 : page;
-      const statusFilter = activeFilter === 'All' ? null : activeFilter.toLowerCase().replace(' ', '-');
-
+      // Pass status to backend for server-side filtering
+      const statusFilter = activeTab === 'Active' ? 'active' : 'inactive';
       const response = await clientsAPI.getClients({
-        page: currentPage,
-        limit: 20,
+        limit: 100,
         status: statusFilter,
-        search: searchQuery || undefined,
+        search: searchQuery || undefined
       });
 
       if (response.success) {
-        const newClients = response.data.clients;
+        const clientsList = response.data.clients || [];
+        setClients(clientsList);
+        setFilteredClients(clientsList);
 
-        if (isRefresh) {
-          setClients(newClients);
-        } else {
-          setClients(prev => [...prev, ...newClients]);
+        // Load projects for each client (limit to first 20 for performance)
+        const projectsMap = {};
+        for (const client of clientsList.slice(0, 20)) {
+          try {
+            const projRes = await projectsAPI.getClientProjects(client._id);
+            if (projRes.success) {
+              projectsMap[client._id] = projRes.data.projects || [];
+            }
+          } catch (e) {
+            projectsMap[client._id] = [];
+          }
         }
-
-        setHasMore(response.data.pagination.current < response.data.pagination.pages);
+        setClientProjects(projectsMap);
       }
     } catch (error) {
       console.error('Error loading clients:', error);
@@ -115,268 +128,196 @@ const ClientsListScreen = ({ navigation }) => {
   const filterClients = () => {
     let filtered = clients;
 
-    if (activeFilter !== 'All') {
-      const statusMap = {
-        'Active': 'active',
-        'At Risk': 'at-risk',
-        'Pending': 'pending',
-        'Inactive': 'inactive'
-      };
-      const statusKey = statusMap[activeFilter];
+    // Filter by active/past
+    if (activeTab === 'Active') {
       filtered = filtered.filter(client =>
-        client.clientDetails?.clientStatus === statusKey
+        client.clientDetails?.clientStatus !== 'inactive'
+      );
+    } else {
+      filtered = filtered.filter(client =>
+        client.clientDetails?.clientStatus === 'inactive'
       );
     }
 
+    // Search filter
     if (searchQuery) {
       filtered = filtered.filter(client =>
-        client.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        client.lastName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        client.email.toLowerCase().includes(searchQuery.toLowerCase())
+        `${client.firstName} ${client.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        client.email?.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
     setFilteredClients(filtered);
   };
 
-  const handleFilterPress = (filter) => {
-    if (activeFilter !== filter) {
-      setActiveFilter(filter);
-      setPage(1);
-      setHasMore(true);
-      loadClients(true);
-    }
-  };
-
   const handleClientPress = (client) => {
     navigation.navigate('ClientProfile', { clientId: client._id });
   };
 
-  const handleRefresh = () => {
-    if (!isAuthenticated || !user) {
-      console.log('User not authenticated, skipping refresh');
-      return;
-    }
-    loadClients(true);
+  const getClientAddress = (client) => {
+    const addr = client.address || client.clientDetails?.address;
+    if (!addr) return 'No address';
+    if (typeof addr === 'string') return addr;
+    const parts = [addr.street, addr.city, addr.state, addr.zipCode].filter(Boolean);
+    return parts.length > 0 ? parts.join(', ') : 'No address';
   };
 
-  const handleLoadMore = () => {
-    if (!isAuthenticated || !user) {
-      console.log('User not authenticated, skipping load more');
-      return;
-    }
-    if (!loading && hasMore) {
-      setPage(prev => prev + 1);
-      loadClients();
-    }
-  };
-
-  const getStatusValue = (client) => {
-    const status = client.clientDetails?.clientStatus || 'active';
-    return status === 'at-risk' ? 'at-risk' : status;
-  };
-
-  const renderClientCard = ({ item, index }) => {
-    const scaleValue = new Animated.Value(1);
-
-    const handlePressIn = () => {
-      Animated.spring(scaleValue, {
-        toValue: 0.95,
-        useNativeDriver: true,
-        friction: 8,
-        tension: 40,
-      }).start();
-    };
-
-    const handlePressOut = () => {
-      Animated.spring(scaleValue, {
-        toValue: 1,
-        useNativeDriver: true,
-        friction: 3,
-        tension: 40,
-      }).start();
-    };
+  const renderClientCard = ({ item }) => {
+    const projects = clientProjects[item._id] || [];
+    const activeProjects = projects.filter(p => p.status !== 'completed');
 
     return (
-      <Animated.View
-        style={[
-          styles.cardContainer,
-          {
-            opacity: fadeAnim,
-            transform: [
-              { translateY: slideAnim },
-              { scale: scaleValue }
-            ],
-          }
-        ]}
+      <TouchableOpacity
+        style={styles.clientCard}
+        onPress={() => handleClientPress(item)}
+        activeOpacity={0.7}
       >
-        <StatusRibbonCard
-          title={`${item.firstName} ${item.lastName}`}
-          subtitle={item.email}
-          avatar={item.profileImage}
-          status={getStatusValue(item)}
-          onPress={() => handleClientPress(item)}
-          contactInfo={{
-            email: item.email,
-            phone: item.phone,
-          }}
-          tags={item.clientDetails?.tags || []}
-          rightComponent={
-            <TouchableOpacity
-              style={styles.viewButton}
-              onPressIn={handlePressIn}
-              onPressOut={handlePressOut}
-              onPress={() => handleClientPress(item)}
-            >
-              <Text style={styles.viewButtonText}>View</Text>
-              <Feather name="arrow-right" size={16} color="#3E60D8" />
-            </TouchableOpacity>
-          }
-        />
-      </Animated.View>
+        <View style={styles.cardHeader}>
+          <View style={styles.avatarContainer}>
+            <Text style={styles.avatarText}>
+              {item.firstName?.charAt(0)}{item.lastName?.charAt(0)}
+            </Text>
+          </View>
+          <View style={styles.clientInfo}>
+            <Text style={styles.clientName}>{item.firstName} {item.lastName}</Text>
+            <Text style={styles.clientEmail}>{item.email}</Text>
+          </View>
+          <Feather name="chevron-right" size={22} color={COLORS.textMuted} />
+        </View>
+
+        <View style={styles.divider} />
+
+        <View style={styles.detailsRow}>
+          <Feather name="mail" size={14} color={COLORS.textMuted} />
+          <Text style={styles.detailText}>{item.email || 'No email'}</Text>
+        </View>
+
+        <View style={styles.detailsRow}>
+          <Feather name="map-pin" size={14} color={COLORS.textMuted} />
+          <Text style={styles.detailText} numberOfLines={1}>{getClientAddress(item)}</Text>
+        </View>
+
+        <View style={styles.detailsRow}>
+          <Feather name="phone" size={14} color={COLORS.textMuted} />
+          <Text style={styles.detailText}>{item.phone || 'No phone'}</Text>
+        </View>
+
+        {activeProjects.length > 0 && (
+          <View style={styles.projectsSection}>
+            <Text style={styles.projectsLabel}>Active Projects ({activeProjects.length})</Text>
+            {activeProjects.slice(0, 2).map(project => (
+              <View key={project._id} style={styles.projectTag}>
+                <Feather name="briefcase" size={12} color={COLORS.primary} />
+                <Text style={styles.projectName} numberOfLines={1}>
+                  {project.projectId || 'N/A'} - {project.title}
+                </Text>
+              </View>
+            ))}
+            {activeProjects.length > 2 && (
+              <Text style={styles.moreProjects}>+{activeProjects.length - 2} more</Text>
+            )}
+          </View>
+        )}
+      </TouchableOpacity>
     );
-  };
-
-  const renderFilterChip = (filter) => (
-    <TouchableOpacity
-      key={filter}
-      style={[
-        styles.filterChip,
-        activeFilter === filter && styles.activeFilterChip,
-      ]}
-      onPress={() => handleFilterPress(filter)}
-      activeOpacity={0.8}
-    >
-      <Text
-        style={[
-          styles.filterChipText,
-          activeFilter === filter && styles.activeFilterChipText,
-        ]}
-      >
-        {filter}
-      </Text>
-    </TouchableOpacity>
-  );
-
-  const renderHeader = () => (
-    <View>
-      {/* Wave Header */}
-      <WaveHeader
-        title="Clients"
-        subtitle={`${filteredClients.length} clients found`}
-        height={180}
-        showBackButton
-        backButtonPress={() => navigation.goBack()}
-      />
-
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBar}>
-          <Feather name="search" size={20} color="#7487C1" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search clients..."
-            placeholderTextColor="#7487C1"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Feather name="x" size={20} color="#7487C1" />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      {/* Filter Chips */}
-      <View style={styles.filtersContainer}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filtersScroll}
-        >
-          {filters.map(renderFilterChip)}
-        </ScrollView>
-      </View>
-    </View>
-  );
-
-  const renderEmptyState = () => (
-    <View style={styles.emptyState}>
-      <Feather name="users" size={64} color="#C9B89A" />
-      <Text style={styles.emptyStateTitle}>No clients found</Text>
-      <Text style={styles.emptyStateText}>
-        {searchQuery || activeFilter !== 'All'
-          ? 'Try adjusting your filters or search query'
-          : 'Start by adding your first client'
-        }
-      </Text>
-      {!searchQuery && activeFilter === 'All' && (
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => navigation.navigate('CreateClient')}
-        >
-          <Feather name="plus" size={20} color="#fff" />
-          <Text style={styles.addButtonText}>Add Client</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-
-  const renderFooter = () => {
-    if (!hasMore) {
-      return (
-        <Text style={styles.footerText}>You've reached the end</Text>
-      );
-    }
-
-    if (loading) {
-      return (
-        <View style={styles.footerLoading}>
-          <ActivityIndicator size="small" color="#3E60D8" />
-          <Text style={styles.footerLoadingText}>Loading more clients...</Text>
-        </View>
-      );
-    }
-
-    return null;
   };
 
   if (loading && clients.length === 0) {
     return (
       <View style={styles.loadingContainer}>
-        <WaveHeader
-          title="Clients"
-          subtitle="Loading..."
-          height={180}
-          showBackButton
-          backButtonPress={() => navigation.goBack()}
-        />
-        <View style={styles.loadingContent}>
-          <ActivityIndicator size="large" color="#3E60D8" />
-          <Text style={styles.loadingText}>Loading clients...</Text>
-        </View>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Loading clients...</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => navigation.goBack()}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Feather name="arrow-left" size={22} color={COLORS.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>View Clients</Text>
+        
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <Feather name="search" size={18} color={COLORS.textMuted} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search clients..."
+          placeholderTextColor={COLORS.textDim}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <Feather name="x" size={18} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Tabs */}
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'Active' && styles.activeTabStyle]}
+          onPress={() => setActiveTab('Active')}
+        >
+          <View style={[styles.tabDot, { backgroundColor: COLORS.activeTab }]} />
+          <Text style={[styles.tabText, activeTab === 'Active' && styles.activeTabText]}>
+            Active Clients
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'Past' && styles.activeTabStyle]}
+          onPress={() => setActiveTab('Past')}
+        >
+          <View style={[styles.tabDot, { backgroundColor: COLORS.pastTab }]} />
+          <Text style={[styles.tabText, activeTab === 'Past' && styles.activeTabText]}>
+            Past Clients
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Stats */}
+      <View style={styles.statsRow}>
+        <Text style={styles.statsText}>{filteredClients.length} clients found</Text>
+      </View>
+
+      {/* Client List */}
       <FlatList
         data={filteredClients}
         renderItem={renderClientCard}
         keyExtractor={(item) => item._id}
-        ListHeaderComponent={renderHeader()}
-        ListEmptyComponent={renderEmptyState()}
-        ListFooterComponent={renderFooter}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-        }
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.1}
-        showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadClients(true)}
+            tintColor={COLORS.primary}
+          />
+        }
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Feather name="users" size={48} color={COLORS.textMuted} />
+            <Text style={styles.emptyTitle}>No {activeTab.toLowerCase()} clients</Text>
+            <Text style={styles.emptyText}>
+              {activeTab === 'Active' ? 'Add your first client to get started' : 'No past clients found'}
+            </Text>
+          </View>
+        }
       />
+
+      {/* Bottom Navigation */}
+      <BottomNavBar navigation={navigation} activeTab="clients" />
     </View>
   );
 };
@@ -384,161 +325,261 @@ const ClientsListScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FBF7EE',
+    backgroundColor: COLORS.background,
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#FBF7EE',
-  },
-  loadingContent: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: -180, // Account for header
+    backgroundColor: COLORS.background,
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: '#7487C1',
-    fontWeight: '500',
+    color: COLORS.textMuted,
   },
-  searchContainer: {
-    paddingHorizontal: 24,
-    marginTop: -30,
-    zIndex: 10,
-  },
-  searchBar: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 20,
+    paddingTop: 60,
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
-    shadowRadius: 24,
-    elevation: 8,
+    paddingBottom: 16,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    flex: 1,
+    textAlign: 'center',
+  },
+  addBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.cardBg,
+    marginHorizontal: 20,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderWidth: 1,
-    borderColor: 'rgba(62, 96, 216, 0.1)',
+    borderColor: COLORS.cardBorder,
   },
   searchInput: {
     flex: 1,
-    marginLeft: 12,
-    fontSize: 16,
-    color: '#1B2540',
-    fontWeight: '500',
+    marginLeft: 10,
+    fontSize: 15,
+    color: COLORS.text,
   },
-  filtersContainer: {
-    marginTop: 24,
-  },
-  filtersScroll: {
-    paddingHorizontal: 24,
+  tabsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    marginTop: 20,
     gap: 12,
   },
-  filterChip: {
-    backgroundColor: '#fff',
+  tab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.cardBg,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 20,
+    borderRadius: 25,
+    gap: 8,
     borderWidth: 1,
-    borderColor: '#F0F4F8',
+    borderColor: COLORS.cardBorder,
+  },
+  activeTabStyle: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  tabDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+  },
+  activeTabText: {
+    color: '#FFFFFF', // White text on Yellow active tab
+  },
+  statsRow: {
+    paddingHorizontal: 20,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  statsText: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+  },
+  listContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 150,
+    flexGrow: 1,
+  },
+  clientCard: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowRadius: 8,
     elevation: 2,
   },
-  activeFilterChip: {
-    backgroundColor: '#3E60D8',
-    borderColor: '#3E60D8',
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  filterChipText: {
-    fontSize: 14,
+  avatarContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+  },
+  clientInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  clientName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  clientEmail: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  menuBtn: {
+    padding: 4,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.cardBorder,
+    marginVertical: 12,
+  },
+  detailsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+    gap: 8,
+  },
+  detailText: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    flex: 1,
+  },
+  projectsSection: {
+    marginTop: 12,
+    backgroundColor: '#F9F9F4', // Light beige for light theme
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  projectsLabel: {
+    fontSize: 12,
     fontWeight: '600',
-    color: '#7487C1',
-  },
-  activeFilterChipText: {
-    color: '#fff',
-  },
-  listContent: {
-    paddingBottom: 20,
-  },
-  cardContainer: {
-    paddingHorizontal: 24,
+    color: COLORS.text,
     marginBottom: 8,
+  },
+  projectTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  projectName: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    flex: 1,
+  },
+  moreProjects: {
+    fontSize: 11,
+    color: COLORS.primary,
+    marginTop: 4,
   },
   viewButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F0F4F8',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    gap: 4,
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    paddingVertical: 12,
+    marginTop: 12,
+    gap: 6,
   },
   viewButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#3E60D8',
+    color: '#1a1a1a',
   },
   emptyState: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 40,
-    paddingBottom: 100,
+    paddingVertical: 60,
   },
-  emptyStateTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1B2540',
-    marginTop: 20,
-    marginBottom: 8,
-  },
-  emptyStateText: {
-    fontSize: 16,
-    color: '#7487C1',
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 32,
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#3E60D8',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 20,
-    gap: 8,
-    shadowColor: '#3E60D8',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  addButtonText: {
-    fontSize: 16,
+  emptyTitle: {
+    fontSize: 18,
     fontWeight: '600',
-    color: '#fff',
+    color: COLORS.text,
+    marginTop: 16,
   },
-  footerText: {
-    textAlign: 'center',
-    padding: 20,
-    color: '#7487C1',
+  emptyText: {
     fontSize: 14,
-    fontWeight: '500',
+    color: COLORS.textMuted,
+    marginTop: 4,
   },
-  footerLoading: {
-    flexDirection: 'row',
-    justifyContent: 'center',
+  fabButton: {
+    position: 'absolute',
+    bottom: 80,
+    right: 24,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.primary,
     alignItems: 'center',
-    padding: 20,
-    gap: 8,
+    justifyContent: 'center',
   },
-  footerLoadingText: {
-    color: '#7487C1',
-    fontSize: 14,
+  navItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navLabel: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginTop: 4,
     fontWeight: '500',
   },
 });

@@ -18,7 +18,9 @@ import ProjectDetailScreen from '../screens/clientManagement/ProjectDetailScreen
 import AddClientScreen from '../screens/clientManagement/AddClientScreen';
 import CreateProjectScreen from '../screens/client/projects/CreateProjectScreen';
 import CreateInvoiceScreen from '../screens/clientManagement/CreateInvoiceScreen';
+import InvoiceDetailScreen from '../screens/clientManagement/InvoiceDetailScreen';
 import ViewInvoicesScreen from '../screens/clientManagement/ViewInvoicesScreen';
+import EditClientScreen from '../screens/clientManagement/EditClientScreen';
 
 const Stack = createStackNavigator();
 
@@ -29,7 +31,7 @@ const EmployeeNavigator = () => {
       screenOptions={{
         headerShown: false,
         gestureEnabled: true,
-        cardStyle: { backgroundColor: '#0D0D0D' },
+        cardStyle: { backgroundColor: '#F5F5F0' },
       }}
     >
       {/* Check-In Screen - First screen after login */}
@@ -42,15 +44,6 @@ const EmployeeNavigator = () => {
         }}
       />
 
-      {/* Dashboard Selection Screen */}
-      <Stack.Screen
-        name="LoginSelection"
-        component={LoginSelectionScreen}
-        options={{
-          title: 'Choose Dashboard',
-          gestureEnabled: false, // Prevent going back to selection
-        }}
-      />
 
       {/* Original Employee Dashboard */}
       <Stack.Screen
@@ -98,6 +91,14 @@ const EmployeeNavigator = () => {
       />
 
       <Stack.Screen
+        name="EditClient"
+        component={EditClientScreen}
+        options={{
+          title: 'Edit Client',
+        }}
+      />
+
+      <Stack.Screen
         name="ProjectList"
         component={ProjectListScreen}
         options={{
@@ -135,6 +136,14 @@ const EmployeeNavigator = () => {
         component={CreateInvoiceScreen}
         options={{
           title: 'Create Invoice',
+        }}
+      />
+
+      <Stack.Screen
+        name="ViewInvoice"
+        component={InvoiceDetailScreen}
+        options={{
+          title: 'Invoice Details',
         }}
       />
 

@@ -5,75 +5,70 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
-  Dimensions,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
-import { Svg, Path } from 'react-native-svg';
 import { useAuth } from '../../context/AuthContext';
-
-// Import components
-import FoldedPanel from '../../components/clientManagement/FoldedPanel';
-import GradientButton from '../../components/clientManagement/GradientButton';
-import WorkloadRing from '../../components/clientManagement/WorkloadRing';
 import { clientsAPI } from '../../utils/api';
+import { useAttendance } from '../../context/AttendanceContext';
+import BottomNavBar from '../../components/common/BottomNavBar';
 
-const { width, height } = Dimensions.get('window');
+// Premium Beige Theme
+const COLORS = {
+  primary: '#B8860B',        // Dark Golden Rod
+  primaryLight: 'rgba(184, 134, 11, 0.15)',
+  background: '#F5F5F0',     // Beige
+  cardBg: '#FFFFFF',         // White cards
+  cardBorder: 'rgba(184, 134, 11, 0.1)',
+  text: '#1A1A1A',           // Dark text
+  textMuted: '#666666',      // Muted text
+  success: '#388E3C',
+  warning: '#F57C00',
+  danger: '#D32F2F',
+};
 
 const ClientProfileScreen = ({ navigation, route }) => {
   const { clientId } = route.params;
   const { user, isAuthenticated } = useAuth();
+  const { isCheckedIn } = useAttendance();
   const [client, setClient] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [projects, setProjects] = useState([]);
-  const [recentEvents, setRecentEvents] = useState([]);
-  const [financialSummary, setFinancialSummary] = useState({
-    totalProjects: 0,
-    completedProjects: 0,
-    totalSpent: 0,
-    outstandingInvoices: 0,
-  });
 
   useEffect(() => {
+    // Protection: If employee is not checked in, redirect to Check-In screen
+    if (isAuthenticated && user?.role === 'employee' && !isCheckedIn) {
+      if (Platform.OS === 'web') {
+        alert('⏳ Access Denied: You must be Checked-In to access client profiles.');
+      } else {
+        Alert.alert('Check-In Required', 'You must be Checked-In to access client profiles.');
+      }
+      navigation.replace('CheckIn');
+      return;
+    }
+
     if (isAuthenticated && user) {
       loadClientData();
     } else {
       setLoading(false);
     }
-  }, [isAuthenticated, user, clientId]);
+  }, [isAuthenticated, user, clientId, isCheckedIn, navigation]);
 
   const loadClientData = async () => {
     try {
-      // Check if user is authenticated before making API call
       if (!isAuthenticated || !user) {
-        console.log('User not authenticated, skipping client data load');
         setLoading(false);
         return;
       }
-      
-      setLoading(true);
 
+      setLoading(true);
       const response = await clientsAPI.getClient(clientId);
       if (response.success) {
-        const { client: clientData, projects: projectsData, recentEvents: eventsData, invoiceStats } = response.data;
+        const { client: clientData, projects: projectsData } = response.data;
         setClient(clientData);
         setProjects(projectsData?.list || []);
-        setRecentEvents(eventsData || []);
-
-        // Calculate financial summary
-        const summary = {
-          totalProjects: projectsData?.stats?.total || 0,
-          completedProjects: projectsData?.stats?.completed || 0,
-          totalSpent: clientData?.clientDetails?.totalSpent || 0,
-          outstandingInvoices: invoiceStats?.reduce((total, stat) => {
-            return stat._id !== 'paid' ? total + stat.total : total;
-          }, 0) || 0,
-        };
-        setFinancialSummary(summary);
       }
     } catch (error) {
       console.error('Error loading client data:', error);
@@ -83,52 +78,35 @@ const ClientProfileScreen = ({ navigation, route }) => {
   };
 
   const handleRefresh = async () => {
-    if (!isAuthenticated || !user) {
-      console.log('User not authenticated, skipping refresh');
-      setRefreshing(false);
-      return;
-    }
-    
     setRefreshing(true);
     await loadClientData();
     setRefreshing(false);
   };
 
-  const getStatusColor = (status) => {
-    const colors = {
-      active: '#7DB87A',
-      'at-risk': '#E8B25D',
-      pending: '#7487C1',
-      inactive: '#D75A5A',
-    };
-    return colors[status] || colors.active;
+  const getClientAddress = () => {
+    const addr = client?.address || client?.clientDetails?.address;
+    if (!addr) return null;
+    if (typeof addr === 'string') return addr;
+    const parts = [addr.street, addr.city, addr.state, addr.zipCode].filter(Boolean);
+    return parts.length > 0 ? parts.join(', ') : null;
   };
 
-  const getStatusLabel = (status) => {
-    return status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
-  };
-
-  const handleTimelineEvent = () => {
-    navigation.navigate('AddTimelineEvent', { clientId });
-  };
-
-  const handleUploadMedia = () => {
-    navigation.navigate('UploadMedia', { clientId });
-  };
-
-  const handleCreateInvoice = () => {
-    navigation.navigate('CreateInvoice', { clientId });
-  };
-
-  const handleViewProjects = () => {
-    navigation.navigate('ProjectList', { clientId });
+  // Mock payment schedule for each project
+  const getPaymentSchedule = (project) => {
+    const budget = project.budget?.estimated || 0;
+    return [
+      { name: 'Advance', amount: budget * 0.25, status: 'paid' },
+      { name: 'Phase 1', amount: budget * 0.25, status: 'pending' },
+      { name: 'Phase 2', amount: budget * 0.25, status: 'pending' },
+      { name: 'Final', amount: budget * 0.25, status: 'pending' },
+    ];
   };
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3E60D8" />
-        <Text style={styles.loadingText}>Loading client profile...</Text>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Loading client...</Text>
       </View>
     );
   }
@@ -136,12 +114,9 @@ const ClientProfileScreen = ({ navigation, route }) => {
   if (!client) {
     return (
       <View style={styles.errorContainer}>
-        <Feather name="alert-circle" size={64} color="#D75A5A" />
+        <Feather name="alert-circle" size={64} color={COLORS.danger} />
         <Text style={styles.errorText}>Client not found</Text>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <Text style={styles.backButtonText}>Go Back</Text>
         </TouchableOpacity>
       </View>
@@ -149,547 +124,430 @@ const ClientProfileScreen = ({ navigation, route }) => {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-      }
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Wave Header with Hero */}
-      <View style={styles.heroSection}>
-        <LinearGradient
-          colors={['#3E60D8', '#566FE0', '#7487C1', '#FBF7EE']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
+    <View style={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+            <Feather name="arrow-left" size={22} color={COLORS.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Client Details</Text>
+          <TouchableOpacity
+            style={styles.editBtn}
+            onPress={() => navigation.navigate('EditClient', { clientId: client._id, clientData: client })}
+          >
+            <Feather name="edit-2" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+        </View>
 
-        {/* Wave shape at bottom */}
-        <Svg
-          width={width}
-          height={120}
-          style={styles.wave}
-          viewBox={`0 0 ${width} 120`}
-          preserveAspectRatio="none"
-        >
-          <Path
-            d={`M0,60 Q${width * 0.25},20 ${width * 0.5},60 T${width},60 L${width},120 L0,120 Z`}
-            fill="#FBF7EE"
-          />
-        </Svg>
-
-        {/* Back Button */}
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Feather name="arrow-left" size={24} color="#fff" />
-        </TouchableOpacity>
-
-        {/* Avatar and Info */}
-        <View style={styles.avatarContainer}>
-          <View style={styles.avatarWrapper}>
-            {client.profileImage ? (
-              <Image source={{ uri: client.profileImage }} style={styles.avatar} />
-            ) : (
-              <View style={styles.defaultAvatar}>
-                <Feather name="user" size={48} color="#7487C1" />
-              </View>
-            )}
-            <View style={styles.avatarGlow} />
-          </View>
-
-          <View style={styles.clientInfo}>
-            <Text style={styles.clientName}>
-              {client.firstName} {client.lastName}
+        {/* Client Info Card */}
+        <View style={styles.clientCard}>
+          <View style={styles.avatarContainer}>
+            <Text style={styles.avatarText}>
+              {client.firstName?.charAt(0)}{client.lastName?.charAt(0)}
             </Text>
-            <Text style={styles.clientEmail}>{client.email}</Text>
+          </View>
+          <Text style={styles.clientName}>{client.firstName} {client.lastName}</Text>
 
-            <View style={styles.statusContainer}>
-              <View style={[styles.statusOrb, { backgroundColor: getStatusColor(client.clientDetails?.clientStatus) }]} />
-              <Text style={styles.statusText}>
-                {getStatusLabel(client.clientDetails?.clientStatus || 'active')}
-              </Text>
-            </View>
+          <View style={styles.infoRow}>
+            <Feather name="mail" size={16} color={COLORS.textMuted} />
+            <Text style={styles.infoText}>{client.email || 'No email'}</Text>
+          </View>
+
+          <View style={styles.infoRow}>
+            <Feather name="phone" size={16} color={COLORS.textMuted} />
+            <Text style={styles.infoText}>{client.phone || 'No phone'}</Text>
+          </View>
+
+          <View style={styles.infoRow}>
+            <Feather name="map-pin" size={16} color={COLORS.textMuted} />
+            <Text style={styles.infoText}>{getClientAddress() || 'No address provided'}</Text>
           </View>
         </View>
 
-        {/* Floating Action Buttons */}
-        <View style={styles.actionButtons}>
-          <TouchableOpacity style={styles.actionButton} onPress={handleTimelineEvent}>
-            <View style={styles.actionIcon}>
-              <Feather name="plus-circle" size={20} color="#3E60D8" />
-            </View>
-            <Text style={styles.actionText}>New Timeline Update</Text>
-          </TouchableOpacity>
+        {/* Projects Section */}
+        <Text style={styles.sectionTitle}>Projects & Payments</Text>
 
-          <TouchableOpacity style={styles.actionButton} onPress={handleUploadMedia}>
-            <View style={styles.actionIcon}>
-              <Feather name="camera" size={20} color="#7DB87A" />
-            </View>
-            <Text style={styles.actionText}>Upload Media</Text>
-          </TouchableOpacity>
+        {projects.length > 0 ? (
+          projects.map((project) => {
+            const payments = getPaymentSchedule(project);
+            const paidCount = payments.filter(p => p.status === 'paid').length;
+            const totalPaid = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
+            const totalAmount = payments.reduce((sum, p) => sum + p.amount, 0);
 
-          <TouchableOpacity style={styles.actionButton} onPress={handleCreateInvoice}>
-            <View style={styles.actionIcon}>
-              <Feather name="file-plus" size={20} color="#E8B25D" />
-            </View>
-            <Text style={styles.actionText}>Create Invoice</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Financial Summary Cards */}
-      <View style={styles.financialSection}>
-        <Text style={styles.sectionTitle}>Financial Summary</Text>
-        <View style={styles.financialCards}>
-          <View style={styles.financialCard}>
-            <WorkloadRing
-              percentage={Math.round((financialSummary.completedProjects / Math.max(financialSummary.totalProjects, 1)) * 100)}
-              label="Projects"
-              color="#7DB87A"
-              size={80}
-            />
-            <Text style={styles.financialLabel}>{financialSummary.completedProjects}/{financialSummary.totalProjects}</Text>
-          </View>
-
-          <View style={styles.financialCard}>
-            <WorkloadRing
-              percentage={75} // Example value
-              label="Media"
-              color="#7487C1"
-              size={80}
-            />
-            <Text style={styles.financialLabel}>{recentEvents.length} updates</Text>
-          </View>
-
-          <View style={styles.financialCard}>
-            <WorkloadRing
-              percentage={60} // Example value
-              label="Invoices"
-              color="#E8B25D"
-              size={80}
-            />
-            <Text style={styles.financialLabel}>${(financialSummary.outstandingInvoices / 1000).toFixed(1)}k pending</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Client Details Panels */}
-      <View style={styles.detailsSection}>
-        <FoldedPanel
-          title="Client Details"
-          defaultExpanded={true}
-          icon={<Feather name="user" size={20} color="#3E60D8" />}
-        >
-          <View style={styles.panelContent}>
-            <DetailRow
-              label="Client Since"
-              value={new Date(client.createdAt).toLocaleDateString()}
-              icon="calendar"
-            />
-            <DetailRow
-              label="Priority Level"
-              value={client.clientDetails?.priorityLevel || 'medium'}
-              icon="flag"
-            />
-            <DetailRow
-              label="Preferred Contact"
-              value={client.clientDetails?.preferredContact || 'both'}
-              icon="mail"
-            />
-            <DetailRow
-              label="Total Projects Completed"
-              value={client.clientDetails?.totalProjectsCompleted || 0}
-              icon="check-circle"
-            />
-          </View>
-        </FoldedPanel>
-
-        <FoldedPanel
-          title="Contact Information"
-          icon={<Feather name="phone" size={20} color="#3E60D8" />}
-        >
-          <View style={styles.panelContent}>
-            <DetailRow
-              label="Email"
-              value={client.email}
-              icon="mail"
-            />
-            {client.phone && (
-              <DetailRow
-                label="Phone"
-                value={client.phone}
-                icon="phone"
-              />
-            )}
-            {client.address && (
-              <DetailRow
-                label="Address"
-                value={`${client.address.city || ''}, ${client.address.state || ''}`}
-                icon="map-pin"
-              />
-            )}
-          </View>
-        </FoldedPanel>
-
-        {client.address && (
-          <FoldedPanel
-            title="Address"
-            icon={<Feather name="home" size={20} color="#3E60D8" />}
-          >
-            <View style={styles.panelContent}>
-              <DetailRow
-                label="Street"
-                value={client.address.street || ''}
-                icon="map-pin"
-              />
-              <DetailRow
-                label="City"
-                value={client.address.city || ''}
-                icon="map-pin"
-              />
-              <DetailRow
-                label="State"
-                value={client.address.state || ''}
-                icon="map-pin"
-              />
-              <DetailRow
-                label="ZIP Code"
-                value={client.address.zipCode || ''}
-                icon="hash"
-              />
-            </View>
-          </FoldedPanel>
-        )}
-
-        {client.clientDetails?.tags && client.clientDetails.tags.length > 0 && (
-          <FoldedPanel
-            title="Tags"
-            icon={<Feather name="tag" size={20} color="#3E60D8" />}
-          >
-            <View style={styles.tagsContainer}>
-              {client.clientDetails.tags.map((tag, index) => (
-                <View key={index} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
+            return (
+              <TouchableOpacity
+                key={project._id}
+                style={styles.projectCard}
+                onPress={() => navigation.navigate('ProjectDetail', { projectId: project._id })}
+                activeOpacity={0.7}
+              >
+                <View style={styles.projectHeader}>
+                  <View style={styles.projectIconCircle}>
+                    <Feather name="briefcase" size={18} color={COLORS.text} />
+                  </View>
+                  <View style={styles.projectInfo}>
+                    <Text style={styles.projectName}>{project.title}</Text>
+                    <Text style={styles.projectId}>{project.projectId || 'No ID'}</Text>
+                  </View>
+                  <Feather name="chevron-right" size={20} color={COLORS.textMuted} />
                 </View>
-              ))}
-            </View>
-          </FoldedPanel>
+
+                {/* Project Location */}
+                {project.location?.address && (
+                  <View style={styles.projectLocation}>
+                    <Feather name="map-pin" size={12} color={COLORS.textMuted} />
+                    <Text style={styles.projectLocationText} numberOfLines={1}>
+                      {project.location.address}, {project.location.city}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Payment Progress */}
+                <View style={styles.paymentProgress}>
+                  <View style={styles.paymentProgressHeader}>
+                    <Text style={styles.paymentProgressLabel}>Payment Progress</Text>
+                    <Text style={styles.paymentProgressValue}>{paidCount}/4 Paid</Text>
+                  </View>
+                  <View style={styles.progressBar}>
+                    <View style={[styles.progressFill, { width: `${(paidCount / 4) * 100}%` }]} />
+                  </View>
+                  <View style={styles.paymentAmounts}>
+                    <Text style={styles.paidAmount}>
+                      <Text style={{ color: COLORS.success }}>₹{totalPaid.toLocaleString()}</Text> paid
+                    </Text>
+                    <Text style={styles.totalAmount}>of ₹{totalAmount.toLocaleString()}</Text>
+                  </View>
+                </View>
+
+                {/* Payment Schedule */}
+                <View style={styles.paymentSchedule}>
+                  {payments.map((payment, idx) => (
+                    <View key={idx} style={styles.paymentItem}>
+                      <View style={[
+                        styles.paymentDot,
+                        { backgroundColor: payment.status === 'paid' ? COLORS.success : COLORS.warning }
+                      ]} />
+                      <Text style={styles.paymentItemName}>{payment.name}</Text>
+                      <Text style={styles.paymentItemAmount}>₹{payment.amount.toLocaleString()}</Text>
+                      <Text style={[
+                        styles.paymentItemStatus,
+                        { color: payment.status === 'paid' ? COLORS.success : COLORS.warning }
+                      ]}>
+                        {payment.status === 'paid' ? '✓' : '○'}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </TouchableOpacity>
+            );
+          })
+        ) : (
+          <View style={styles.noProjects}>
+            <Feather name="folder" size={40} color={COLORS.textMuted} />
+            <Text style={styles.noProjectsText}>No projects yet</Text>
+          </View>
         )}
 
-        {client.clientDetails?.projectBudget && (
-          <FoldedPanel
-            title="Project Preferences"
-            icon={<Feather name="settings" size={20} color="#3E60D8" />}
-          >
-            <View style={styles.panelContent}>
-              <DetailRow
-                label="Project Budget"
-                value={`$${client.clientDetails.projectBudget.toLocaleString()}`}
-                icon="dollar-sign"
-              />
-              <DetailRow
-                label="Preferred Style"
-                value={client.clientDetails.preferredStyle || 'Not specified'}
-                icon="palette"
-              />
-              <DetailRow
-                label="Property Type"
-                value={client.clientDetails.propertyType || 'Not specified'}
-                icon="home"
-              />
-              <DetailRow
-                label="Timeline"
-                value={client.clientDetails.timeline || 'Not specified'}
-                icon="clock"
-              />
-            </View>
-          </FoldedPanel>
-        )}
-      </View>
+        <View style={{ height: 150 }} />
+      </ScrollView>
 
-      {/* Call to Action */}
-      <View style={styles.ctaSection}>
-        <GradientButton
-          title="View Client Projects"
-          onPress={handleViewProjects}
-          gradientColors={['#3E60D8', '#566FE0']}
-          icon={<Feather name="briefcase" size={20} color="#fff" />}
-          width="full"
-        />
-      </View>
-
-      <View style={styles.bottomPadding} />
-    </ScrollView>
+      {/* Bottom Navigation */}
+      <BottomNavBar navigation={navigation} activeTab="clients" />
+    </View>
   );
 };
-
-const DetailRow = ({ label, value, icon }) => (
-  <View style={styles.detailRow}>
-    <View style={styles.detailIcon}>
-      <Feather name={icon} size={16} color="#7487C1" />
-    </View>
-    <Text style={styles.detailLabel}>{label}</Text>
-    <Text style={styles.detailValue}>{value}</Text>
-  </View>
-);
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FBF7EE',
+    backgroundColor: COLORS.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 150,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: COLORS.background,
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: '#7487C1',
-    fontWeight: '500',
+    color: COLORS.textMuted,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: COLORS.background,
     padding: 40,
   },
   errorText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
-    color: '#D75A5A',
-    marginTop: 20,
-    marginBottom: 30,
+    color: COLORS.danger,
+    marginTop: 16,
+    marginBottom: 24,
   },
   backButton: {
-    position: 'absolute',
-    top: 50,
-    left: 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
   },
   backButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#3E60D8',
+    color: COLORS.text,
   },
-  heroSection: {
-    height: 400,
-    position: 'relative',
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
   },
-  wave: {
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    flex: 1,
+    textAlign: 'center',
+    marginLeft: 10,
+  },
+  editBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+  },
+  clientCard: {
+    backgroundColor: COLORS.cardBg,
+    marginHorizontal: 20,
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  avatarContainer: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  avatarText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: COLORS.text,
+  },
+  clientName: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 16,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 10,
+  },
+  infoText: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginHorizontal: 20,
+    marginTop: 28,
+    marginBottom: 16,
+  },
+  projectCard: {
+    backgroundColor: COLORS.cardBg,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  projectHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  projectIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  projectInfo: {
+    flex: 1,
+  },
+  projectName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  projectId: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  projectLocation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    gap: 6,
+  },
+  projectLocationText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    flex: 1,
+  },
+  paymentProgress: {
+    marginTop: 16,
+    backgroundColor: '#F9FAFB', // Light gray background
+    borderRadius: 12,
+    padding: 12,
+  },
+  paymentProgressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  paymentProgressLabel: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  paymentProgressValue: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.success,
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: '#E5E7EB', // Light gray unfilled bar
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: COLORS.success,
+    borderRadius: 3,
+  },
+  paymentAmounts: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  paidAmount: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  totalAmount: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  paymentSchedule: {
+    marginTop: 12,
+  },
+  paymentItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  paymentDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 10,
+  },
+  paymentItemName: {
+    fontSize: 13,
+    color: COLORS.text,
+    flex: 1,
+  },
+  paymentItemAmount: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginRight: 10,
+  },
+  paymentItemStatus: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  noProjects: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    marginHorizontal: 20,
+  },
+  noProjectsText: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    marginTop: 12,
+  },
+  bottomNav: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.cardBg,
+    paddingVertical: 12,
+    paddingBottom: 24,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.cardBorder,
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
   },
-  avatarContainer: {
-    position: 'absolute',
-    top: 80,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  avatarWrapper: {
-    position: 'relative',
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-  },
-  defaultAvatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#F0F4F8',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#E8EEF4',
-  },
-  avatarGlow: {
-    position: 'absolute',
-    top: -8,
-    left: -8,
-    right: -8,
-    bottom: -8,
-    borderRadius: 58,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
-  },
-  clientInfo: {
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  clientName: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#fff',
-    marginBottom: 8,
-    letterSpacing: -0.5,
-  },
-  clientEmail: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginBottom: 12,
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  statusOrb: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 8,
-  },
-  statusText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  actionButtons: {
-    position: 'absolute',
-    bottom: 40,
-    left: 20,
-    right: 20,
-    gap: 12,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  actionIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F0F4F8',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  actionText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1B2540',
-  },
-  financialSection: {
-    paddingHorizontal: 24,
-    marginTop: 20,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1B2540',
-    marginBottom: 20,
-    letterSpacing: -0.3,
-  },
-  financialCards: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 16,
-  },
-  financialCard: {
+  navItem: {
     flex: 1,
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  financialLabel: {
-    fontSize: 12,
-    color: '#7487C1',
-    fontWeight: '600',
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  detailsSection: {
-    paddingHorizontal: 24,
-    marginTop: 32,
-  },
-  panelContent: {
-    gap: 16,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  detailIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F0F4F8',
     justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
   },
-  detailLabel: {
-    flex: 1,
-    fontSize: 14,
-    color: '#7487C1',
+  navLabel: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginTop: 4,
     fontWeight: '500',
-  },
-  detailValue: {
-    fontSize: 14,
-    color: '#1B2540',
-    fontWeight: '600',
-    flex: 1.5,
-    textAlign: 'right',
-  },
-  tagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  tag: {
-    backgroundColor: '#F0F4F8',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E8EEF4',
-  },
-  tagText: {
-    fontSize: 13,
-    color: '#7487C1',
-    fontWeight: '600',
-  },
-  ctaSection: {
-    paddingHorizontal: 24,
-    marginTop: 32,
-  },
-  bottomPadding: {
-    height: 40,
   },
 });
 

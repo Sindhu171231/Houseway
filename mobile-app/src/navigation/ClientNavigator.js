@@ -7,6 +7,7 @@ import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 // Import Client screens
 import ClientDashboardScreen from '../screens/client/ClientDashboardScreen';
 import ProjectsScreen from '../screens/client/projects/ProjectsScreen';
+import CreateProjectScreen from '../screens/client/projects/CreateProjectScreen'; // Imported
 import ProfileScreen from '../screens/profile/ProfileScreen';
 
 // Import Project footer tabs (nested navigator)
@@ -26,6 +27,7 @@ const DashboardStack = () => (
 const ProjectsStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="ProjectsList" component={ProjectsScreen} />
+    <Stack.Screen name="CreateProject" component={CreateProjectScreen} />
     {/* Nested footer tabs for project details */}
     <Stack.Screen name="ProjectDetails" component={ProjectFooterTabs} />
   </Stack.Navigator>
@@ -45,8 +47,17 @@ const ClientNavigator = () => {
       id="rootTab"
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: '#9C27B0',
-        tabBarInactiveTintColor: 'gray',
+        tabBarActiveTintColor: '#B8860B', // Dark Golden Rod
+        tabBarInactiveTintColor: '#666666',
+        tabBarStyle: {
+          backgroundColor: '#FFFFFF',
+          borderTopColor: 'rgba(184, 134, 11, 0.1)',
+          elevation: 10,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.05,
+          shadowRadius: 4,
+        },
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
           switch (route.name) {

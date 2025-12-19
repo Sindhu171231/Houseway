@@ -22,7 +22,7 @@ import WaveHeader from "../../components/clientManagement/WaveHeader";
 const CreateInvoiceScreen = ({ navigation, route }) => {
   const { user } = useAuth();
   const presetProjectId = route?.params?.projectId;
-  
+
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState(presetProjectId || "");
   const [invoiceInfo, setInvoiceInfo] = useState("");
@@ -116,17 +116,17 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
 
       if (Platform.OS === "web") {
         console.log("🌐 Web platform detected - using Blob");
-        
+
         // For web: fetch blob and create File object
         const response = await fetch(fileUri);
         const blob = await response.blob();
         const file = new File([blob], fileName, { type: fileType });
-        
+
         formData.append("file", file);
         console.log("✅ Web file appended:", file.name, file.size);
       } else {
         console.log("📱 Native platform detected - using URI");
-        
+
         // For native: use URI directly
         formData.append("file", {
           uri: fileUri,
@@ -144,7 +144,7 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
 
       // Upload
       let uploadResponse;
-      
+
       if (Platform.OS === "web") {
         // For web: use fetch API
         uploadResponse = await fetch("http://localhost:5000/api/files/upload/invoice", {
@@ -154,10 +154,10 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
           },
           body: formData,
         });
-        
+
         const data = await uploadResponse.json();
         console.log("✅ Upload response:", data);
-        
+
         if (data.success) {
           setUploadSuccess(true);
           Alert.alert(
@@ -185,9 +185,9 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
             "Content-Type": "multipart/form-data",
           },
         });
-        
+
         console.log("✅ Upload response:", uploadResponse.data);
-        
+
         if (uploadResponse.data?.success) {
           setUploadSuccess(true);
           Alert.alert(
@@ -215,7 +215,7 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
         response: error.response?.data,
         status: error.response?.status,
       });
-      
+
       const errorMessage = error.response?.data?.message || error.message || "Upload failed";
       Alert.alert("Error", errorMessage);
     } finally {
@@ -261,9 +261,10 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
         backButtonPress={() => navigation?.goBack()}
       />
 
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         {/* Success Banner */}
@@ -436,6 +437,7 @@ const styles = StyleSheet.create({
   contentContainer: {
     padding: 20,
     paddingBottom: 40,
+    flexGrow: 1,
   },
   loadingContainer: {
     flex: 1,

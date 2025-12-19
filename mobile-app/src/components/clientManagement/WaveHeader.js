@@ -5,13 +5,15 @@ import { Feather } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 
-// Yellow/Black Theme
+// Warm Cream & Amber Theme
+// Premium Beige Theme
 const COLORS = {
-  primary: '#FFD700',
-  background: '#1a1a1a',
-  backgroundLight: '#2d2d2d',
-  text: '#FFFFFF',
-  textMuted: 'rgba(255,255,255,0.7)',
+  primary: '#B8860B',      // Dark Golden Rod
+  background: '#F5F5F0',   // Beige
+  backgroundLight: '#F9F9F4',
+  accent: '#E6D7BB',
+  text: '#1A1A1A',
+  textMuted: '#666666',
 };
 
 const WaveHeader = ({
@@ -24,11 +26,16 @@ const WaveHeader = ({
 }) => {
   return (
     <LinearGradient
-      colors={[COLORS.background, COLORS.backgroundLight, '#3d3d0d']}
+      colors={[COLORS.background, COLORS.backgroundLight, '#FAF9F6']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={[styles.container, { height }]}
     >
+      {/* Decorative circles - pointerEvents="none" ensures they don't block touches */}
+      <View pointerEvents="none" style={[styles.floatingCircle, styles.circle1]} />
+      <View pointerEvents="none" style={[styles.floatingCircle, styles.circle2]} />
+      <View pointerEvents="none" style={[styles.floatingCircle, styles.circle3]} />
+
       {/* Gold accent line at top */}
       <View style={styles.accentLine} />
 
@@ -41,7 +48,7 @@ const WaveHeader = ({
               onPress={backButtonPress}
               activeOpacity={0.7}
             >
-              <Feather name="arrow-left" size={20} color={COLORS.primary} />
+              <Feather name="arrow-left" size={20} color="#000000" />
             </TouchableOpacity>
           )}
 
@@ -57,11 +64,6 @@ const WaveHeader = ({
           {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
         </View>
       </View>
-
-      {/* Decorative gold circles */}
-      <View style={[styles.floatingCircle, styles.circle1]} />
-      <View style={[styles.floatingCircle, styles.circle2]} />
-      <View style={[styles.floatingCircle, styles.circle3]} />
 
       {/* Bottom gold accent */}
       <View style={styles.bottomAccent} />
@@ -115,7 +117,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '700',
-    color: COLORS.primary,
+    color: COLORS.text,
     marginBottom: 6,
     letterSpacing: -0.5,
   },
@@ -133,25 +135,25 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
   },
   circle1: {
-    width: 100,
-    height: 100,
-    opacity: 0.05,
-    top: -30,
+    width: 140,
+    height: 140,
+    opacity: 0.12,
+    top: -40,
     left: -30,
   },
   circle2: {
-    width: 60,
-    height: 60,
-    opacity: 0.08,
-    top: 50,
-    right: -15,
+    width: 100,
+    height: 100,
+    opacity: 0.15,
+    top: 30,
+    right: -25,
   },
   circle3: {
-    width: 40,
-    height: 40,
-    opacity: 0.06,
-    bottom: 30,
-    left: '40%',
+    width: 60,
+    height: 60,
+    opacity: 0.1,
+    bottom: 20,
+    left: '35%',
   },
   bottomAccent: {
     position: 'absolute',
@@ -159,7 +161,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 2,
-    backgroundColor: 'rgba(255,215,0,0.3)',
+    backgroundColor: 'rgba(255,193,7,0.25)',
   },
 });
 

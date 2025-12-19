@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -14,39 +14,69 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
-import { usersAPI } from '../../utils/api';
+import { clientsAPI } from '../../utils/api';
 
-// Light Cream/Yellow Theme
 const COLORS = {
-    primary: '#FFC107',        // Warm Yellow/Gold
+    primary: '#FFC107',
     primaryLight: 'rgba(255, 193, 7, 0.15)',
-    background: '#FDFBF7',     // Warm cream background
-    cardBg: '#FFFFFF',         // White cards
+    background: '#FDFBF7',
+    cardBg: '#FFFFFF',
     cardBorder: 'rgba(0, 0, 0, 0.05)',
-    text: '#1F2937',           // Dark gray text
-    textMuted: '#6B7280',      // Muted text
-    inputBg: '#F9FAFB',        // Light gray input background
+    text: '#1F2937',
+    textMuted: '#6B7280',
+    inputBg: '#F9FAFB',
     success: '#10B981',
     danger: '#EF4444',
 };
 
-const AddClientScreen = ({ navigation }) => {
+const EditClientScreen = ({ navigation, route }) => {
+    const { clientId, clientData } = route.params;
     const { user } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
+    const [isFetching, setIsFetching] = useState(!clientData);
     const [formData, setFormData] = useState({
-        firstName: '',
-        lastName: '',
-        email: '',
-        phone: '',
-        company: '',
-        address: '',
-        city: '',
-        state: '',
-        notes: '',
-        // Login credentials
-        username: '',
-        password: '',
+        firstName: clientData?.firstName || '',
+        lastName: clientData?.lastName || '',
+        email: clientData?.email || '',
+        phone: clientData?.phone || '',
+        company: clientData?.clientDetails?.company || '',
+        address: typeof clientData?.address === 'string' ? clientData.address : (clientData?.address?.street || ''),
+        city: clientData?.address?.city || '',
+        state: clientData?.address?.state || '',
+        notes: clientData?.clientDetails?.notes || '',
     });
+
+    useEffect(() => {
+        if (!clientData && clientId) {
+            fetchClient();
+        }
+    }, [clientId, clientData]);
+
+    const fetchClient = async () => {
+        try {
+            setIsFetching(true);
+            const response = await clientsAPI.getClient(clientId);
+            if (response.success) {
+                const c = response.data.client;
+                setFormData({
+                    firstName: c.firstName || '',
+                    lastName: c.lastName || '',
+                    email: c.email || '',
+                    phone: c.phone || '',
+                    company: c.clientDetails?.company || '',
+                    address: typeof c.address === 'string' ? c.address : (c.address?.street || ''),
+                    city: c.address?.city || '',
+                    state: c.address?.state || '',
+                    notes: c.clientDetails?.notes || '',
+                });
+            }
+        } catch (error) {
+            console.error('Error fetching client:', error);
+            showAlert('Error', 'Failed to load client data');
+        } finally {
+            setIsFetching(false);
+        }
+    };
 
     const handleInputChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -59,22 +89,6 @@ const AddClientScreen = ({ navigation }) => {
         }
         if (!formData.lastName.trim()) {
             showAlert('Error', 'Last name is required');
-            return false;
-        }
-        if (!formData.email.trim()) {
-            showAlert('Error', 'Email is required');
-            return false;
-        }
-        if (!formData.phone.trim()) {
-            showAlert('Error', 'Phone number is required');
-            return false;
-        }
-        if (!formData.username.trim()) {
-            showAlert('Error', 'Username is required for client login');
-            return false;
-        }
-        if (!formData.password.trim() || formData.password.length < 6) {
-            showAlert('Error', 'Password must be at least 6 characters');
             return false;
         }
         return true;
@@ -94,14 +108,11 @@ const AddClientScreen = ({ navigation }) => {
         try {
             setIsLoading(true);
 
-            const clientData = {
+            const updateData = {
                 firstName: formData.firstName,
                 lastName: formData.lastName,
                 email: formData.email,
                 phone: formData.phone,
-                role: 'client',
-                username: formData.username || formData.email,
-                password: formData.password,
                 address: {
                     street: formData.address,
                     city: formData.city,
@@ -113,23 +124,23 @@ const AddClientScreen = ({ navigation }) => {
                 },
             };
 
-            const response = await usersAPI.registerClient(clientData);
+            const response = await clientsAPI.updateClient(clientId, updateData);
 
             if (response.success) {
                 if (Platform.OS === 'web') {
-                    alert('✅ Client added successfully!');
+                    alert('✅ Client updated successfully!');
                     navigation.goBack();
                 } else {
-                    Alert.alert('Success', 'Client added successfully!', [
+                    Alert.alert('Success', 'Client updated successfully!', [
                         { text: 'OK', onPress: () => navigation.goBack() },
                     ]);
                 }
             } else {
-                showAlert('Error', response.message || 'Failed to add client');
+                showAlert('Error', response.message || 'Failed to update client');
             }
         } catch (error) {
-            console.error('Add client error:', error);
-            showAlert('Error', 'Failed to add client');
+            console.error('Update client error:', error);
+            showAlert('Error', 'Failed to update client');
         } finally {
             setIsLoading(false);
         }
@@ -151,13 +162,21 @@ const AddClientScreen = ({ navigation }) => {
         </View>
     );
 
+    if (isFetching) {
+        return (
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+        );
+    }
+
     return (
         <KeyboardAvoidingView
             style={styles.container}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
             <LinearGradient
-                colors={[COLORS.background, '#FDFBF7']}
+                colors={[COLORS.background, '#ffffff', COLORS.background]}
                 style={styles.gradient}
             >
                 <ScrollView
@@ -166,16 +185,14 @@ const AddClientScreen = ({ navigation }) => {
                     showsVerticalScrollIndicator={false}
                     keyboardShouldPersistTaps="handled"
                 >
-                    {/* Header */}
                     <View style={styles.header}>
                         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
                             <Feather name="arrow-left" size={24} color={COLORS.primary} />
                         </TouchableOpacity>
-                        <Text style={styles.headerTitle}>Add New Client</Text>
+                        <Text style={styles.headerTitle}>Edit Client</Text>
                         <View style={{ width: 40 }} />
                     </View>
 
-                    {/* Form */}
                     <View style={styles.formCard}>
                         <View style={styles.formSection}>
                             <Text style={styles.sectionLabel}>Personal Information</Text>
@@ -200,7 +217,7 @@ const AddClientScreen = ({ navigation }) => {
                             </View>
 
                             <InputField
-                                label="Email *"
+                                label="Email"
                                 value={formData.email}
                                 onChangeText={(v) => handleInputChange('email', v)}
                                 placeholder="john.doe@email.com"
@@ -208,7 +225,7 @@ const AddClientScreen = ({ navigation }) => {
                             />
 
                             <InputField
-                                label="Phone *"
+                                label="Phone"
                                 value={formData.phone}
                                 onChangeText={(v) => handleInputChange('phone', v)}
                                 placeholder="+1 234 567 8900"
@@ -219,47 +236,18 @@ const AddClientScreen = ({ navigation }) => {
                                 label="Company"
                                 value={formData.company}
                                 onChangeText={(v) => handleInputChange('company', v)}
-                                placeholder="Company name (optional)"
+                                placeholder="Company name"
                             />
-                        </View>
-
-                        {/* Login Credentials Section */}
-                        <View style={styles.formSection}>
-                            <Text style={styles.sectionLabel}>🔐 Login Credentials</Text>
-                            <Text style={styles.helpText}>
-                                These credentials will allow the client to log in and view their projects
-                            </Text>
-
-                            <InputField
-                                label="Username *"
-                                value={formData.username}
-                                onChangeText={(v) => handleInputChange('username', v)}
-                                placeholder="client_username"
-                            />
-
-                            <View style={styles.inputContainer}>
-                                <Text style={styles.inputLabel}>Password *</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    value={formData.password}
-                                    onChangeText={(v) => handleInputChange('password', v)}
-                                    placeholder="Min 6 characters"
-                                    placeholderTextColor={COLORS.textMuted}
-                                    secureTextEntry
-                                />
-                            </View>
                         </View>
 
                         <View style={styles.formSection}>
                             <Text style={styles.sectionLabel}>Address</Text>
-
                             <InputField
                                 label="Street Address"
                                 value={formData.address}
                                 onChangeText={(v) => handleInputChange('address', v)}
                                 placeholder="123 Main Street"
                             />
-
                             <View style={styles.row}>
                                 <View style={styles.halfInput}>
                                     <InputField
@@ -286,24 +274,23 @@ const AddClientScreen = ({ navigation }) => {
                                 label="Notes"
                                 value={formData.notes}
                                 onChangeText={(v) => handleInputChange('notes', v)}
-                                placeholder="Any additional notes about the client..."
+                                placeholder="Notes about client..."
                                 multiline
                             />
                         </View>
                     </View>
 
-                    {/* Submit Button */}
                     <TouchableOpacity
                         style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
                         onPress={handleSubmit}
                         disabled={isLoading}
                     >
                         {isLoading ? (
-                            <ActivityIndicator color={COLORS.background} />
+                            <ActivityIndicator color="#1F2937" />
                         ) : (
                             <>
-                                <Feather name="user-plus" size={20} color={COLORS.background} />
-                                <Text style={styles.submitButtonText}>Add Client</Text>
+                                <Feather name="check" size={20} color="#1F2937" />
+                                <Text style={styles.submitButtonText}>Update Client</Text>
                             </>
                         )}
                     </TouchableOpacity>
@@ -316,19 +303,14 @@ const AddClientScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
-    gradient: {
-        flex: 1,
-    },
-    scrollView: {
-        flex: 1,
-    },
+    container: { flex: 1, backgroundColor: COLORS.background },
+    gradient: { flex: 1 },
+    scrollView: { flex: 1 },
     scrollContent: {
         flexGrow: 1,
-        paddingBottom: 150, // More padding to ensure scrollability
+        paddingBottom: 150
     },
+    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -347,11 +329,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(0,0,0,0.05)',
     },
-    headerTitle: {
-        fontSize: 20,
-        fontWeight: '700',
-        color: COLORS.primary,
-    },
+    headerTitle: { fontSize: 20, fontWeight: '700', color: COLORS.primary },
     formCard: {
         marginHorizontal: 20,
         backgroundColor: COLORS.cardBg,
@@ -360,9 +338,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: COLORS.cardBorder,
     },
-    formSection: {
-        marginBottom: 24,
-    },
+    formSection: { marginBottom: 24 },
     sectionLabel: {
         fontSize: 14,
         fontWeight: '600',
@@ -371,22 +347,10 @@ const styles = StyleSheet.create({
         textTransform: 'uppercase',
         letterSpacing: 1,
     },
-    row: {
-        flexDirection: 'row',
-        gap: 12,
-    },
-    halfInput: {
-        flex: 1,
-    },
-    inputContainer: {
-        marginBottom: 16,
-    },
-    inputLabel: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: COLORS.text,
-        marginBottom: 8,
-    },
+    row: { flexDirection: 'row', gap: 12 },
+    halfInput: { flex: 1 },
+    inputContainer: { marginBottom: 16 },
+    inputLabel: { fontSize: 14, fontWeight: '600', color: COLORS.text, marginBottom: 8 },
     input: {
         backgroundColor: COLORS.inputBg,
         borderRadius: 12,
@@ -397,10 +361,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: COLORS.cardBorder,
     },
-    multilineInput: {
-        height: 100,
-        textAlignVertical: 'top',
-    },
+    multilineInput: { height: 100, textAlignVertical: 'top' },
     submitButton: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -412,20 +373,8 @@ const styles = StyleSheet.create({
         borderRadius: 14,
         gap: 10,
     },
-    submitButtonDisabled: {
-        opacity: 0.7,
-    },
-    submitButtonText: {
-        fontSize: 18,
-        fontWeight: '700',
-        color: '#1F2937', // Dark text on yellow button
-    },
-    helpText: {
-        fontSize: 12,
-        color: COLORS.textMuted,
-        marginBottom: 16,
-        lineHeight: 18,
-    },
+    submitButtonDisabled: { opacity: 0.7 },
+    submitButtonText: { fontSize: 18, fontWeight: '700', color: '#1F2937' },
 });
 
-export default AddClientScreen;
+export default EditClientScreen;

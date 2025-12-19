@@ -1,709 +1,748 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
 import { Feather } from '@expo/vector-icons';
-// Using a custom picker solution for better cross-platform compatibility
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../../context/AuthContext';
 import { projectsAPI, usersAPI } from '../../../utils/api';
 
-const CreateProjectScreen = ({ navigation }) => {
+// Light Cream/Yellow Theme
+const COLORS = {
+  primary: '#FFC107',        // Warm Yellow/Gold
+  primaryLight: 'rgba(255, 193, 7, 0.15)',
+  background: '#FDFBF7',     // Warm cream background
+  cardBg: '#FFFFFF',         // White cards
+  border: 'rgba(0, 0, 0, 0.05)',
+  text: '#1F2937',           // Dark gray text
+  textMuted: '#6B7280',      // Muted text
+  inputBg: '#F9FAFB',        // Light gray input
+  success: '#10B981',
+  danger: '#EF4444',
+};
+
+const CreateProjectScreen = () => {
   const { user } = useAuth();
+  const navigation = useNavigation();
+  const scrollRef = useRef(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [clients, setClients] = useState([]);
+
+  /* Toast State */
+  const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
+
+  const showToast = (message, type = 'success') => {
+    setToast({ visible: true, message, type });
+    setTimeout(() => setToast({ visible: false, message: '', type: 'success' }), 3000);
+  };
+  const [existingClients, setExistingClients] = useState([]);
   const [executionTeam, setExecutionTeam] = useState([]);
-  const [formData, setFormData] = useState({
+  const [loadingClients, setLoadingClients] = useState(true);
+
+  // Fetch real clients and employees from API
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch clients
+        const clientsRes = await usersAPI.getUsers({ role: 'client' });
+        if (clientsRes.success && clientsRes.data?.users) {
+          setExistingClients(clientsRes.data.users);
+        }
+        // Fetch employees for team assignment
+        const employeesRes = await usersAPI.getUsers({ role: 'employee' });
+        if (employeesRes.success && employeesRes.data?.users) {
+          setExecutionTeam(employeesRes.data.users);
+        }
+        // Fetch projects to get next project ID
+        const projectsRes = await projectsAPI.getProjects({ limit: 1, sortBy: 'projectId', sortOrder: 'desc' });
+        if (projectsRes.success && projectsRes.data?.projects?.length > 0) {
+          const lastProjectId = projectsRes.data.projects[0].projectId;
+          if (lastProjectId) {
+            const match = lastProjectId.match(/HW-(\d+)/);
+            if (match) {
+              const nextNum = parseInt(match[1], 10) + 1;
+              setProjectForm(prev => ({ ...prev, projectId: `HW-${String(nextNum).padStart(5, '0')}` }));
+            }
+          }
+        } else {
+          // First project
+          setProjectForm(prev => ({ ...prev, projectId: 'HW-00001' }));
+        }
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        // Set default project ID on error
+        setProjectForm(prev => ({ ...prev, projectId: 'HW-00001' }));
+      } finally {
+        setLoadingClients(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  const [isNewClient, setIsNewClient] = useState(false);
+
+  const [clientForm, setClientForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+    phone: '',
+    address: {
+      street: '',
+      city: '',
+      state: '',
+      zipCode: ''
+    }
+  });
+
+  const [projectForm, setProjectForm] = useState({
+    projectId: '',
     title: '',
     description: '',
     projectType: 'residential',
-    designStyle: 'modern',
-    priority: 'medium',
     client: '',
-    assignedEmployee: '', // Execution team member
-    budget: {
-      estimated: '',
-      currency: 'USD',
-    },
-    paymentDeadlines: {
-      firstPayment: '',
-      secondPayment: '',
-      thirdPayment: '',
-    },
-    location: {
-      address: '',
-      city: '',
-      state: '',
-      zipCode: '',
-      country: 'USA',
-    },
-    specifications: {
-      area: '',
-      areaUnit: 'sqft',
-      floors: '',
-      bedrooms: '',
-      bathrooms: '',
-      parking: '',
-    },
+    assignedEmployee: '',
+    budget: '',
+    startDate: '',
+    deadline: '',
+    address: '',
+    city: '',
+    state: '',
+    zipCode: ''
   });
 
-  useEffect(() => {
-    loadClientsAndTeam();
-  }, []);
-
-  const loadClientsAndTeam = async () => {
-    try {
-      // Load clients and employees in parallel
-      const [clientsRes, employeesRes] = await Promise.all([
-        usersAPI.getUsers({ role: 'client', limit: 100 }),
-        usersAPI.getUsers({ role: 'employee', limit: 100 }),
-      ]);
-
-      if (clientsRes.success) {
-        setClients(clientsRes.data.users || []);
-      }
-
-      if (employeesRes.success) {
-        // Filter employees with executionTeam subRole
-        const employees = employeesRes.data.users || [];
-        const execTeam = employees.filter(e =>
-          e.subRole === 'executionTeam' || !e.subRole // Include all employees if no subRole filter needed
-        );
-        setExecutionTeam(execTeam);
-      }
-    } catch (error) {
-      console.error('Error loading data:', error);
-    }
-  };
-
-  const handleInputChange = (field, value, nested = null) => {
+  const handleClientChange = (field, value, nested = null) => {
     if (nested) {
-      setFormData(prev => ({
+      setClientForm(prev => ({
         ...prev,
         [nested]: {
           ...prev[nested],
-          [field]: value,
-        },
+          [field]: value
+        }
       }));
     } else {
-      setFormData(prev => ({
-        ...prev,
-        [field]: value,
-      }));
+      setClientForm(prev => ({ ...prev, [field]: value }));
     }
   };
 
-  const validateForm = () => {
-    if (!formData.title.trim()) {
-      Alert.alert('Validation Error', 'Project title is required');
-      return false;
+  const handleProjectChange = (field, value) => {
+    setProjectForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const validate = () => {
+    if (!projectForm.title.trim()) return "Project title is required";
+    if (!projectForm.budget.trim()) return "Budget is required";
+
+    if (isNewClient) {
+      if (!clientForm.firstName.trim()) return "Client first name is required";
+      if (!clientForm.email.trim() || !clientForm.email.includes('@')) return "Valid email is required";
+      if (!clientForm.password || clientForm.password.length < 6) return "Password must be at least 6 characters";
+    } else {
+      if (!projectForm.client) return "Please select a client";
     }
-    if (!formData.description.trim()) {
-      Alert.alert('Validation Error', 'Project description is required');
-      return false;
-    }
-    if (!formData.client) {
-      Alert.alert('Validation Error', 'Please select a client');
-      return false;
-    }
-    if (!formData.budget.estimated || isNaN(formData.budget.estimated)) {
-      Alert.alert('Validation Error', 'Please enter a valid budget amount');
-      return false;
-    }
-    return true;
+    return null;
   };
 
   const handleSubmit = async () => {
-    if (!validateForm()) return;
+    const error = validate();
+    if (error) {
+      alert(error);
+      return;
+    }
 
+    setIsLoading(true);
     try {
-      setIsLoading(true);
+      let finalClientId = projectForm.client;
 
-      // Build assigned employees array
-      const assignedEmployees = [user._id];
-      if (formData.assignedEmployee) {
-        assignedEmployees.push(formData.assignedEmployee);
+      // 1. Create Client if New
+      if (isNewClient) {
+        const clientPayload = {
+          firstName: clientForm.firstName,
+          lastName: clientForm.lastName,
+          email: clientForm.email,
+          password: clientForm.password,
+          phone: clientForm.phone,
+          role: 'client',
+          isActive: true,
+          address: clientForm.address
+        };
+
+        const clientRes = await usersAPI.registerClient(clientPayload);
+
+        if (clientRes.success) {
+          // Backend returns: { data: { client: { _id, ... } } }
+          finalClientId = clientRes.data?.client?._id || clientRes.data?._id;
+          console.log('Created client with ID:', finalClientId);
+          if (!finalClientId) throw new Error("Created client but couldn't get ID");
+        } else {
+          throw new Error(clientRes.message || "Failed to create client");
+        }
       }
 
-      const projectData = {
-        ...formData,
-        budget: {
-          ...formData.budget,
-          estimated: parseFloat(formData.budget.estimated),
-          actual: 0,
+      // 2. Create Project
+      const projectPayload = {
+        projectId: projectForm.projectId,  // Custom project ID like HW-00001
+        title: projectForm.title,
+        description: (projectForm.description || projectForm.title).padEnd(10, ' '), // Ensure min 10 chars
+        clientId: finalClientId,  // Backend expects 'clientId' not 'client'
+        projectType: projectForm.projectType,
+        budget: parseFloat(projectForm.budget) || 0,  // Send as number, not object
+        timeline: {
+          startDate: projectForm.startDate ? new Date(projectForm.startDate).toISOString() : undefined,
         },
-        specifications: {
-          ...formData.specifications,
-          area: formData.specifications.area ? parseInt(formData.specifications.area) : 0,
-          floors: formData.specifications.floors ? parseInt(formData.specifications.floors) : 1,
-          bedrooms: formData.specifications.bedrooms ? parseInt(formData.specifications.bedrooms) : 0,
-          bathrooms: formData.specifications.bathrooms ? parseInt(formData.specifications.bathrooms) : 0,
-          parking: formData.specifications.parking ? parseInt(formData.specifications.parking) : 0,
+        location: {
+          address: projectForm.address,
+          city: projectForm.city,
+          state: projectForm.state,
+          zipCode: projectForm.zipCode
         },
-        paymentDeadlines: {
-          firstPayment: formData.paymentDeadlines.firstPayment ? new Date(formData.paymentDeadlines.firstPayment) : null,
-          secondPayment: formData.paymentDeadlines.secondPayment ? new Date(formData.paymentDeadlines.secondPayment) : null,
-          thirdPayment: formData.paymentDeadlines.thirdPayment ? new Date(formData.paymentDeadlines.thirdPayment) : null,
-        },
+        assignedEmployees: [user._id, ...(projectForm.assignedEmployee ? [projectForm.assignedEmployee] : [])],
         status: 'planning',
-        progress: {
-          percentage: 0,
-          milestones: [],
-        },
-        assignedEmployees,
-        createdBy: user._id,
+        createdBy: user._id
       };
 
-      const response = await projectsAPI.createProject(projectData);
+      const projectRes = await projectsAPI.createProject(projectPayload);
 
-      if (response.success) {
-        const projectId = response.data?.project?._id || response.data?._id;
-
-        if (Platform.OS === 'web') {
-          const createInvoice = window.confirm('Project created successfully! Would you like to create an invoice for this project?');
-          if (createInvoice && projectId) {
-            navigation.replace('CreateInvoice', { projectId });
-          } else {
-            navigation.goBack();
-          }
-        } else {
-          Alert.alert(
-            '✅ Project Created!',
-            'Would you like to create an invoice for this project?',
-            [
-              {
-                text: 'Later',
-                style: 'cancel',
-                onPress: () => navigation.goBack(),
-              },
-              {
-                text: 'Create Invoice',
-                onPress: () => {
-                  if (projectId) {
-                    navigation.replace('CreateInvoice', { projectId });
-                  } else {
-                    navigation.goBack();
-                  }
-                },
-              },
-            ]
-          );
-        }
+      if (projectRes.success) {
+        showToast("Project created successfully!", 'success');
+        // Navigate back after showing toast
+        setTimeout(() => {
+          navigation.goBack();
+        }, 1500);
       } else {
-        Alert.alert('Error', response.message || 'Failed to create project');
+        // Check for duplicate project ID
+        if (projectRes.message?.includes('duplicate') || projectRes.message?.includes('exists')) {
+          showToast("Project ID already exists! Please use a different ID.", 'error');
+        } else {
+          showToast(projectRes.message || "Failed to create project", 'error');
+        }
       }
+
     } catch (error) {
-      console.error('Error creating project:', error);
-      Alert.alert('Error', 'Failed to create project');
+      console.error("Submission Error:", error);
+      if (error.message?.includes('duplicate') || error.message?.includes('exists')) {
+        showToast("Project ID already exists! Please use a different ID.", 'error');
+      } else {
+        showToast(error.message || "Something went wrong", 'error');
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const FormSection = ({ title, children }) => (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
-    </View>
-  );
-
-  const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default', multiline = false }) => (
-    <View style={styles.inputContainer}>
-      <Text style={styles.inputLabel}>{label}</Text>
-      <TextInput
-        style={{ ...styles.input, ...(multiline && styles.multilineInput) }}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor="#999"
-        keyboardType={keyboardType}
-        multiline={multiline}
-        numberOfLines={multiline ? 4 : 1}
-      />
-    </View>
-  );
-
-  const PickerField = ({ label, selectedValue, onValueChange, items }) => {
-    const [showPicker, setShowPicker] = useState(false);
-
-    const selectedItem = items.find(item => item.value === selectedValue);
-
-    return (
-      <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>{label}</Text>
-        <TouchableOpacity
-          style={styles.pickerButton}
-          onPress={() => setShowPicker(true)}
-        >
-          <Text style={{ ...styles.pickerButtonText, ...(!selectedItem && styles.placeholderText) }}>
-            {selectedItem ? selectedItem.label : 'Select an option'}
-          </Text>
-          <Text style={styles.pickerArrow}>▼</Text>
-        </TouchableOpacity>
-
-        {showPicker && (
-          <View style={styles.pickerModal}>
-            <View style={styles.pickerContent}>
-              <View style={styles.pickerHeader}>
-                <Text style={styles.pickerTitle}>{label}</Text>
-                <TouchableOpacity onPress={() => setShowPicker(false)}>
-                  <Text style={styles.pickerClose}>✕</Text>
-                </TouchableOpacity>
-              </View>
-              <ScrollView style={styles.pickerOptions}>
-                {items.map((item) => (
-                  <TouchableOpacity
-                    key={item.value}
-                    style={{
-                      ...styles.pickerOption,
-                      ...(selectedValue === item.value && styles.selectedOption)
-                    }}
-                    onPress={() => {
-                      onValueChange(item.value);
-                      setShowPicker(false);
-                    }}
-                  >
-                    <Text style={{
-                      ...styles.pickerOptionText,
-                      ...(selectedValue === item.value && styles.selectedOptionText)
-                    }}>
-                      {item.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-        )}
-      </View>
-    );
+  const scrollToTop = () => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-          >
-            <Feather name="arrow-left" size={24} color="#FFD700" />
-          </TouchableOpacity>
-          <View>
-            <Text style={styles.headerTitle}>Create New Project</Text>
-            <Text style={styles.headerSubtitle}>Fill in the project details</Text>
-          </View>
-        </View>
+    <div style={styles.container}>
+      {/* Toast Notification */}
+      {toast.visible && (
+        <div style={{
+          ...styles.toast,
+          backgroundColor: toast.type === 'error' ? COLORS.danger : COLORS.success
+        }}>
+          <Feather name={toast.type === 'error' ? 'alert-circle' : 'check-circle'} size={20} color="#fff" />
+          <span>{toast.message}</span>
+        </div>
+      )}
 
-        <FormSection title="Basic Information">
-          <InputField
-            label="Project Title *"
-            value={formData.title}
-            onChangeText={(value) => handleInputChange('title', value)}
-            placeholder="Enter project title"
-          />
+      {/* Header */}
+      <div style={styles.header}>
+        <button style={styles.backButton} onClick={() => navigation.goBack()}>
+          <Feather name="arrow-left" size={20} color={COLORS.text} />
+        </button>
+        <div>
+          <h1 style={styles.headerTitle}>Create Project</h1>
+          <p style={styles.headerSubtitle}>New Project & Client Details</p>
+        </div>
+      </div>
 
-          <InputField
-            label="Description *"
-            value={formData.description}
-            onChangeText={(value) => handleInputChange('description', value)}
-            placeholder="Describe the project"
-            multiline={true}
-          />
+      {/* Scrollable Content */}
+      <div ref={scrollRef} style={styles.scrollContainer}>
+        <div style={styles.contentWrapper}>
 
-          <PickerField
-            label="Project Type"
-            selectedValue={formData.projectType}
-            onValueChange={(value) => handleInputChange('projectType', value)}
-            items={[
-              { label: 'Residential', value: 'residential' },
-              { label: 'Commercial', value: 'commercial' },
-              { label: 'Renovation', value: 'renovation' },
-              { label: 'Interior Design', value: 'interior' },
-            ]}
-          />
+          {/* CLIENT DETAILS SECTION */}
+          <div style={styles.section}>
+            <div style={styles.sectionHeader}>
+              <h2 style={styles.sectionTitle}>Client Details</h2>
+              <div style={styles.toggleContainer}>
+                <span style={{ ...styles.toggleLabel, ...((!isNewClient) && styles.activeLabel) }}>Existing</span>
+                <label style={styles.switchLabel}>
+                  <input
+                    type="checkbox"
+                    checked={isNewClient}
+                    onChange={(e) => setIsNewClient(e.target.checked)}
+                    style={styles.switchInput}
+                  />
+                  <span style={{ ...styles.switch, ...(isNewClient && styles.switchActive) }}></span>
+                </label>
+                <span style={{ ...styles.toggleLabel, ...(isNewClient && styles.activeLabel) }}>New</span>
+              </div>
+            </div>
 
-          <PickerField
-            label="Design Style"
-            selectedValue={formData.designStyle}
-            onValueChange={(value) => handleInputChange('designStyle', value)}
-            items={[
-              { label: 'Modern', value: 'modern' },
-              { label: 'Contemporary', value: 'contemporary' },
-              { label: 'Traditional', value: 'traditional' },
-              { label: 'Minimalist', value: 'minimalist' },
-              { label: 'Industrial', value: 'industrial' },
-              { label: 'Rustic', value: 'rustic' },
-            ]}
-          />
+            {isNewClient ? (
+              <div style={styles.formGroup}>
+                <div style={styles.row}>
+                  <div style={{ flex: 1, marginRight: 8 }}>
+                    <label style={styles.label}>First Name *</label>
+                    <input
+                      style={styles.input}
+                      placeholder="John"
+                      value={clientForm.firstName}
+                      onChange={e => handleClientChange('firstName', e.target.value)}
+                    />
+                  </div>
+                  <div style={{ flex: 1, marginLeft: 8 }}>
+                    <label style={styles.label}>Last Name</label>
+                    <input
+                      style={styles.input}
+                      placeholder="Doe"
+                      value={clientForm.lastName}
+                      onChange={e => handleClientChange('lastName', e.target.value)}
+                    />
+                  </div>
+                </div>
 
-          <PickerField
-            label="Priority"
-            selectedValue={formData.priority}
-            onValueChange={(value) => handleInputChange('priority', value)}
-            items={[
-              { label: 'Low', value: 'low' },
-              { label: 'Medium', value: 'medium' },
-              { label: 'High', value: 'high' },
-            ]}
-          />
+                <label style={styles.label}>Email Address *</label>
+                <input
+                  style={styles.input}
+                  type="email"
+                  placeholder="client@email.com"
+                  value={clientForm.email}
+                  onChange={e => handleClientChange('email', e.target.value)}
+                />
 
-          <PickerField
-            label="Client *"
-            selectedValue={formData.client}
-            onValueChange={(value) => handleInputChange('client', value)}
-            items={[
-              { label: 'Select a client', value: '' },
-              ...clients.map(client => ({
-                label: `${client.firstName} ${client.lastName}`,
-                value: client._id,
-              })),
-            ]}
-          />
+                <label style={styles.label}>Password *</label>
+                <input
+                  style={styles.input}
+                  type="password"
+                  placeholder="Enter password"
+                  value={clientForm.password}
+                  onChange={e => handleClientChange('password', e.target.value)}
+                />
 
-          <PickerField
-            label="Assign Execution Team Member"
-            selectedValue={formData.assignedEmployee}
-            onValueChange={(value) => handleInputChange('assignedEmployee', value)}
-            items={[
-              { label: 'No team member assigned', value: '' },
-              ...executionTeam.map(emp => ({
-                label: `${emp.firstName} ${emp.lastName} ${emp.subRole ? `(${emp.subRole})` : ''}`,
-                value: emp._id,
-              })),
-            ]}
-          />
-        </FormSection>
+                <label style={styles.label}>Phone Number</label>
+                <input
+                  style={styles.input}
+                  type="tel"
+                  placeholder="+1 234 567 8900"
+                  value={clientForm.phone}
+                  onChange={e => handleClientChange('phone', e.target.value)}
+                />
 
-        <FormSection title="Budget & Payment Schedule">
-          <InputField
-            label="Estimated Budget *"
-            value={formData.budget.estimated}
-            onChangeText={(value) => handleInputChange('estimated', value, 'budget')}
-            placeholder="Enter budget amount"
-            keyboardType="numeric"
-          />
-
-          <InputField
-            label="1st Payment Deadline"
-            value={formData.paymentDeadlines.firstPayment}
-            onChangeText={(value) => handleInputChange('firstPayment', value, 'paymentDeadlines')}
-            placeholder="YYYY-MM-DD"
-          />
-
-          <InputField
-            label="2nd Payment Deadline"
-            value={formData.paymentDeadlines.secondPayment}
-            onChangeText={(value) => handleInputChange('secondPayment', value, 'paymentDeadlines')}
-            placeholder="YYYY-MM-DD"
-          />
-
-          <InputField
-            label="3rd Payment Deadline"
-            value={formData.paymentDeadlines.thirdPayment}
-            onChangeText={(value) => handleInputChange('thirdPayment', value, 'paymentDeadlines')}
-            placeholder="YYYY-MM-DD"
-          />
-        </FormSection>
-
-        <FormSection title="Location">
-          <InputField
-            label="Address"
-            value={formData.location.address}
-            onChangeText={(value) => handleInputChange('address', value, 'location')}
-            placeholder="Street address"
-          />
-
-          <InputField
-            label="City"
-            value={formData.location.city}
-            onChangeText={(value) => handleInputChange('city', value, 'location')}
-            placeholder="City"
-          />
-
-          <InputField
-            label="State"
-            value={formData.location.state}
-            onChangeText={(value) => handleInputChange('state', value, 'location')}
-            placeholder="State"
-          />
-
-          <InputField
-            label="ZIP Code"
-            value={formData.location.zipCode}
-            onChangeText={(value) => handleInputChange('zipCode', value, 'location')}
-            placeholder="ZIP Code"
-            keyboardType="numeric"
-          />
-        </FormSection>
-
-        <FormSection title="Specifications">
-          <InputField
-            label="Total Area (sq ft)"
-            value={formData.specifications.area}
-            onChangeText={(value) => handleInputChange('area', value, 'specifications')}
-            placeholder="Total area"
-            keyboardType="numeric"
-          />
-
-          <InputField
-            label="Number of Floors"
-            value={formData.specifications.floors}
-            onChangeText={(value) => handleInputChange('floors', value, 'specifications')}
-            placeholder="Number of floors"
-            keyboardType="numeric"
-          />
-
-          <InputField
-            label="Bedrooms"
-            value={formData.specifications.bedrooms}
-            onChangeText={(value) => handleInputChange('bedrooms', value, 'specifications')}
-            placeholder="Number of bedrooms"
-            keyboardType="numeric"
-          />
-
-          <InputField
-            label="Bathrooms"
-            value={formData.specifications.bathrooms}
-            onChangeText={(value) => handleInputChange('bathrooms', value, 'specifications')}
-            placeholder="Number of bathrooms"
-            keyboardType="numeric"
-          />
-
-          <InputField
-            label="Parking Spaces"
-            value={formData.specifications.parking}
-            onChangeText={(value) => handleInputChange('parking', value, 'specifications')}
-            placeholder="Number of parking spaces"
-            keyboardType="numeric"
-          />
-        </FormSection>
-
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => navigation.goBack()}
-            disabled={isLoading}
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={{ ...styles.submitButton, ...(isLoading && styles.disabledButton) }}
-            onPress={handleSubmit}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#fff" size="small" />
+                <label style={styles.label}>Address</label>
+                <input
+                  style={styles.input}
+                  placeholder="Street Address"
+                  value={clientForm.address.street}
+                  onChange={e => handleClientChange('street', e.target.value, 'address')}
+                />
+                <div style={styles.row}>
+                  <input
+                    style={{ ...styles.input, flex: 1, marginRight: 8 }}
+                    placeholder="City"
+                    value={clientForm.address.city}
+                    onChange={e => handleClientChange('city', e.target.value, 'address')}
+                  />
+                  <input
+                    style={{ ...styles.input, flex: 1, marginLeft: 8 }}
+                    placeholder="State"
+                    value={clientForm.address.state}
+                    onChange={e => handleClientChange('state', e.target.value, 'address')}
+                  />
+                </div>
+                <input
+                  style={styles.input}
+                  placeholder="Zip Code"
+                  value={clientForm.address.zipCode}
+                  onChange={e => handleClientChange('zipCode', e.target.value, 'address')}
+                />
+              </div>
             ) : (
-              <Text style={styles.submitButtonText}>Create Project</Text>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Select Client *</label>
+                <select
+                  style={styles.select}
+                  value={projectForm.client}
+                  onChange={e => handleProjectChange('client', e.target.value)}
+                >
+                  <option value="">-- Select a client --</option>
+                  {existingClients.map(client => (
+                    <option key={client._id} value={client._id}>
+                      [{client._id.slice(-6).toUpperCase()}] {client.firstName} {client.lastName} - {client.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          </div>
+
+          {/* PROJECT DETAILS SECTION */}
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>Project Information</h2>
+
+            <label style={styles.label}>Project ID *</label>
+            <input
+              style={{ ...styles.input, fontWeight: 'bold', color: COLORS.primary }}
+              placeholder="HW-00001"
+              value={projectForm.projectId}
+              onChange={e => handleProjectChange('projectId', e.target.value.toUpperCase())}
+            />
+
+            <label style={styles.label}>Project Title *</label>
+            <input
+              style={styles.input}
+              placeholder="e.g. Modern Villa Renovation"
+              value={projectForm.title}
+              onChange={e => handleProjectChange('title', e.target.value)}
+            />
+
+            <label style={styles.label}>Project Type</label>
+            <div style={styles.chipContainer}>
+              {['residential', 'commercial', 'renovation'].map(type => (
+                <button
+                  key={type}
+                  style={{
+                    ...styles.typeChip,
+                    ...(projectForm.projectType === type && styles.typeChipActive)
+                  }}
+                  onClick={() => handleProjectChange('projectType', type)}
+                >
+                  {type.charAt(0).toUpperCase() + type.slice(1)}
+                </button>
+              ))}
+            </div>
+
+            <label style={styles.label}>Estimated Budget (₹) *</label>
+            <input
+              style={styles.input}
+              type="number"
+              placeholder="50000"
+              value={projectForm.budget}
+              onChange={e => handleProjectChange('budget', e.target.value)}
+            />
+
+            <label style={styles.label}>Location</label>
+            <input
+              style={{ ...styles.input, marginBottom: 8 }}
+              placeholder="Street Address"
+              value={projectForm.address}
+              onChange={e => handleProjectChange('address', e.target.value)}
+            />
+            <div style={styles.row}>
+              <input
+                style={{ ...styles.input, flex: 1, marginRight: 8 }}
+                placeholder="City"
+                value={projectForm.city}
+                onChange={e => handleProjectChange('city', e.target.value)}
+              />
+              <input
+                style={{ ...styles.input, flex: 1, marginLeft: 8 }}
+                placeholder="State"
+                value={projectForm.state}
+                onChange={e => handleProjectChange('state', e.target.value)}
+              />
+            </div>
+
+            <label style={styles.label}>Start Date</label>
+            <input
+              style={styles.input}
+              type="date"
+              value={projectForm.startDate}
+              onChange={e => handleProjectChange('startDate', e.target.value)}
+            />
+
+            <label style={styles.label}>Assign Team Member</label>
+            <select
+              style={styles.select}
+              value={projectForm.assignedEmployee}
+              onChange={e => handleProjectChange('assignedEmployee', e.target.value)}
+            >
+              <option value="">-- None --</option>
+              {executionTeam.map(emp => (
+                <option key={emp._id} value={emp._id}>
+                  {emp.firstName} {emp.lastName} ({emp.email})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Submit Button */}
+          <button
+            style={{ ...styles.submitBtn, ...(isLoading && { opacity: 0.7 }) }}
+            onClick={handleSubmit}
+            disabled={isLoading}
+          >
+            {isLoading ? 'Creating...' : 'Create Project'}
+          </button>
+
+        </div>
+      </div>
+
+      {/* Scroll to Top Button */}
+      <button style={styles.scrollTopBtn} onClick={scrollToTop} title="Scroll to top">
+        ↑
+      </button>
+    </div>
   );
 };
 
-const styles = StyleSheet.create({
+const styles = {
   container: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100vh',
+    backgroundColor: COLORS.background,
+    color: COLORS.text,
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    position: 'relative',
+  },
+  header: {
+    backgroundColor: COLORS.cardBg,
+    padding: '20px',
+    borderBottom: `1px solid ${COLORS.border}`,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+    flexShrink: 0,
+  },
+  backButton: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '8px',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: '24px',
+    fontWeight: '700',
+    color: COLORS.primary,
+    margin: 0,
+  },
+  headerSubtitle: {
+    fontSize: '14px',
+    color: COLORS.textMuted,
+    margin: '4px 0 0 0',
   },
   scrollContainer: {
     flex: 1,
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    scrollBehavior: 'smooth',
   },
-  header: {
-    backgroundColor: '#2d2d2d',
-    padding: 20,
-    paddingTop: 50,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,215,0,0.2)',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFD700',
-    marginBottom: 4,
-  },
-  backButton: {
-    marginBottom: 10,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    color: '#aaa',
+  contentWrapper: {
+    padding: '20px',
+    maxWidth: '800px',
+    margin: '0 auto',
+    paddingBottom: '40px',
   },
   section: {
-    backgroundColor: '#2d2d2d',
-    marginTop: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,215,0,0.1)',
+    marginBottom: '24px',
+    padding: '20px',
+    backgroundColor: COLORS.cardBg,
+    borderRadius: '16px',
+    border: `1px solid ${COLORS.border}`,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFD700',
-    marginBottom: 15,
-  },
-  inputContainer: {
-    marginBottom: 20,
-  },
-  inputLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: 'rgba(255,215,0,0.3)',
-    borderRadius: 8,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#fff',
-    backgroundColor: '#333',
-  },
-  multilineInput: {
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  pickerButton: {
-    borderWidth: 1,
-    borderColor: 'rgba(255,215,0,0.3)',
-    borderRadius: 8,
-    backgroundColor: '#333',
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    flexDirection: 'row',
+  sectionHeader: {
+    display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: '16px',
+    flexWrap: 'wrap',
+    gap: '12px',
   },
-  pickerButtonText: {
-    fontSize: 16,
-    color: '#fff',
-    flex: 1,
+  sectionTitle: {
+    fontSize: '16px',
+    fontWeight: '700',
+    color: COLORS.primary,
+    textTransform: 'uppercase',
+    letterSpacing: '1px',
+    margin: 0,
   },
-  placeholderText: {
-    color: '#888',
+  toggleContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
   },
-  pickerArrow: {
-    fontSize: 12,
-    color: '#FFD700',
+  toggleLabel: {
+    fontSize: '12px',
+    color: COLORS.textMuted,
+    fontWeight: '600',
   },
-  pickerModal: {
+  activeLabel: {
+    color: COLORS.text,
+  },
+  switchLabel: {
+    position: 'relative',
+    display: 'inline-block',
+    width: '44px',
+    height: '24px',
+  },
+  switchInput: {
+    opacity: 0,
+    width: 0,
+    height: 0,
+  },
+  switch: {
     position: 'absolute',
+    cursor: 'pointer',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#E5E5E5', // Darker toggle track for light theme
+    transition: '0.3s',
+    borderRadius: '24px',
+    '::before': {
+      content: '""',
+      position: 'absolute',
+      height: '18px',
+      width: '18px',
+      left: '3px',
+      bottom: '3px',
+      backgroundColor: '#fff',
+      transition: '0.3s',
+      borderRadius: '50%',
+    },
+  },
+  switchActive: {
+    backgroundColor: COLORS.primary,
+  },
+  formGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  label: {
+    fontSize: '13px',
+    color: COLORS.textMuted,
+    marginBottom: '8px',
+    marginTop: '4px',
+    display: 'block',
+  },
+  input: {
+    backgroundColor: COLORS.inputBg,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: '8px',
+    padding: '14px 16px',
+    color: COLORS.text,
+    fontSize: '16px',
+    marginBottom: '12px',
+    width: '100%',
+    boxSizing: 'border-box',
+    outline: 'none',
+    transition: 'border-color 0.2s, box-shadow 0.2s',
+    caretColor: COLORS.primary,
+  },
+  select: {
+    backgroundColor: COLORS.inputBg,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: '8px',
+    padding: '14px 16px',
+    color: COLORS.text,
+    fontSize: '16px',
+    marginBottom: '12px',
+    width: '100%',
+    boxSizing: 'border-box',
+    outline: 'none',
+    cursor: 'pointer',
+    appearance: 'none',
+    backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FFD700' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'right 12px center',
+    backgroundSize: '20px',
+  },
+  row: {
+    display: 'flex',
+    gap: '0',
+    marginBottom: '0',
+  },
+  chipContainer: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '8px',
+    marginBottom: '12px',
+  },
+  chip: {
+    padding: '8px 16px',
+    borderRadius: '20px',
+    backgroundColor: COLORS.inputBg,
+    border: `1px solid ${COLORS.border}`,
+    color: COLORS.textMuted,
+    fontSize: '13px',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  chipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+    color: '#000',
+    fontWeight: '600',
+  },
+  typeChip: {
+    padding: '6px 12px',
+    borderRadius: '8px',
+    backgroundColor: COLORS.inputBg,
+    border: `1px solid ${COLORS.border}`,
+    color: COLORS.textMuted,
+    fontSize: '13px',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  typeChipActive: {
+    backgroundColor: 'rgba(255, 215, 0, 0.15)',
+    borderColor: COLORS.primary,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  submitBtn: {
+    backgroundColor: COLORS.primary,
+    padding: '18px',
+    borderRadius: '12px',
+    border: 'none',
+    color: '#000',
+    fontSize: '16px',
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    cursor: 'pointer',
+    width: '100%',
+    transition: 'all 0.2s',
+    boxShadow: `0 4px 12px ${COLORS.primary}40`,
+  },
+  scrollTopBtn: {
+    position: 'fixed',
+    bottom: '24px',
+    right: '24px',
+    width: '48px',
+    height: '48px',
+    borderRadius: '50%',
+    backgroundColor: COLORS.primary,
+    color: '#000',
+    border: 'none',
+    fontSize: '20px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+    transition: 'all 0.2s',
     zIndex: 1000,
   },
-  pickerContent: {
-    backgroundColor: '#2d2d2d',
-    borderRadius: 12,
-    width: '80%',
-    maxHeight: '60%',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(255,215,0,0.3)',
-  },
-  pickerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,215,0,0.2)',
-  },
-  pickerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFD700',
-  },
-  pickerClose: {
-    fontSize: 18,
-    color: '#aaa',
-    padding: 4,
-  },
-  pickerOptions: {
-    maxHeight: 300,
-  },
-  pickerOption: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
-  },
-  selectedOption: {
-    backgroundColor: 'rgba(255,215,0,0.2)',
-  },
-  pickerOptionText: {
-    fontSize: 16,
+  toast: {
+    position: 'fixed',
+    top: '20px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    padding: '12px 24px',
+    borderRadius: '50px',
     color: '#fff',
-  },
-  selectedOptionText: {
-    color: '#FFD700',
     fontWeight: '600',
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    backgroundColor: '#2d2d2d',
-    marginTop: 10,
-  },
-  cancelButton: {
-    flex: 1,
-    backgroundColor: '#444',
-    paddingVertical: 15,
-    borderRadius: 8,
-    marginRight: 10,
+    display: 'flex',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,215,0,0.3)',
+    gap: '12px',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+    zIndex: 2000,
+    animation: 'slideDown 0.3s ease-out',
+    minWidth: '300px',
+    justifyContent: 'center',
   },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#aaa',
-  },
-  submitButton: {
-    flex: 1,
-    backgroundColor: '#FFD700',
-    paddingVertical: 15,
-    borderRadius: 8,
-    marginLeft: 10,
-    alignItems: 'center',
-  },
-  submitButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1a1a1a',
-  },
-  disabledButton: {
-    backgroundColor: '#666',
-  },
-});
+};
 
 export default CreateProjectScreen;

@@ -7,48 +7,58 @@ import {
   RefreshControl,
   Dimensions,
   TouchableOpacity,
-  TextInput,
   ActivityIndicator,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { dashboardAPI } from '../../utils/api';
+import { useAttendance } from '../../context/AttendanceContext';
+import BottomNavBar from '../../components/common/BottomNavBar';
 
 const { width } = Dimensions.get('window');
 
-// Import components
-import WaveHeader from '../../components/clientManagement/WaveHeader';
-import { clientsAPI } from '../../utils/api';
-
-// Yellow/Black Theme
+// Light Cream/Yellow Theme
+// Premium Beige Theme
 const COLORS = {
-  primary: '#FFD700',
-  background: '#0D0D0D',
-  cardBg: '#1A1A1A',
-  cardBorder: 'rgba(255, 215, 0, 0.15)',
-  text: '#FFFFFF',
-  textMuted: '#888888',
-  textDim: '#666666',
+  primary: '#B8860B',        // Dark Golden Rod
+  primaryLight: 'rgba(184, 134, 11, 0.15)',
+  background: '#F5F5F0',     // Beige
+  cardBg: '#FFFFFF',         // White cards
+  cardBorder: 'rgba(184, 134, 11, 0.1)',
+  text: '#1A1A1A',           // Dark gray text
+  textMuted: '#666666',      // Muted text
+  textDim: '#999999',        // Dim text
 };
 
 const HomeDashboardScreen = ({ navigation }) => {
   const { user, isAuthenticated } = useAuth();
+  const { isCheckedIn } = useAttendance();
   const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [dashboardStats, setDashboardStats] = useState({
-    totalClients: 0,
-    activeProjects: 0,
-    recentInvoices: 0,
+    projects: 0,
+    materialRequests: 0,
+    quotations: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Protection: If employee is not checked in, redirect to Check-In screen
+    if (isAuthenticated && user?.role === 'employee' && !isCheckedIn) {
+      if (Platform.OS === 'web') {
+        alert('⏳ Access Denied: You must be Checked-In to access this section.');
+      } else {
+        Alert.alert('Check-In Required', 'You must be Checked-In to access this section.');
+      }
+      navigation.replace('CheckIn');
+      return;
+    }
+
     if (isAuthenticated && user) {
       loadDashboardData();
     } else {
       setIsLoading(false);
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, isCheckedIn, navigation]);
 
   const loadDashboardData = async () => {
     try {
@@ -56,9 +66,8 @@ const HomeDashboardScreen = ({ navigation }) => {
         setIsLoading(false);
         return;
       }
-
       setIsLoading(true);
-      const statsResponse = await clientsAPI.getDashboardStats();
+      const statsResponse = await dashboardAPI.getStats();
       if (statsResponse.success) {
         setDashboardStats(statsResponse.data);
       }
@@ -76,48 +85,12 @@ const HomeDashboardScreen = ({ navigation }) => {
   };
 
   const tiles = [
-    {
-      id: 'clients',
-      title: 'View Clients',
-      subtitle: `${dashboardStats.totalClients} clients`,
-      icon: 'users',
-      route: 'ClientsList',
-    },
-    {
-      id: 'add_client',
-      title: 'Add Client',
-      subtitle: 'New client',
-      icon: 'user-plus',
-      route: 'AddClient',
-    },
-    {
-      id: 'projects',
-      title: 'View Projects',
-      subtitle: `${dashboardStats.activeProjects} active`,
-      icon: 'briefcase',
-      route: 'ProjectList',
-    },
-    {
-      id: 'add_project',
-      title: 'Add Project',
-      subtitle: 'Create new',
-      icon: 'plus-square',
-      route: 'CreateProject',
-    },
-    {
-      id: 'invoices',
-      title: 'Invoices',
-      subtitle: 'View all',
-      icon: 'file-text',
-      route: 'ViewInvoices',
-    },
-    {
-      id: 'create_invoice',
-      title: 'Create Invoice',
-      subtitle: 'Generate new',
-      icon: 'plus-circle',
-      route: 'CreateInvoice',
-    },
+    { id: 'clients', title: 'View Clients', subtitle: 'Manage clients', icon: 'users', route: 'ClientsList' },
+    { id: 'add_client', title: 'Add Client', subtitle: 'New client', icon: 'user-plus', route: 'AddClient' },
+    { id: 'projects', title: 'View Projects', subtitle: `${dashboardStats.projects || 0} active`, icon: 'briefcase', route: 'ProjectList' },
+    { id: 'add_project', title: 'Add Project', subtitle: 'Create new', icon: 'plus-square', route: 'CreateProject' },
+    { id: 'invoices', title: 'Invoices', subtitle: 'View all', icon: 'file-text', route: 'ViewInvoices' },
+    { id: 'create_invoice', title: 'Create Invoice', subtitle: 'Generate new', icon: 'plus-circle', route: 'CreateInvoice' },
   ];
 
   const DashboardTile = ({ tile }) => (
@@ -126,13 +99,11 @@ const HomeDashboardScreen = ({ navigation }) => {
       activeOpacity={0.8}
       onPress={() => navigation.navigate(tile.route)}
     >
-      <View style={styles.tileContent}>
-        <View style={styles.tileIconContainer}>
-          <Feather name={tile.icon} size={28} color={COLORS.background} />
-        </View>
-        <Text style={styles.tileTitle}>{tile.title}</Text>
-        <Text style={styles.tileSubtitle}>{tile.subtitle}</Text>
+      <View style={styles.tileIconContainer}>
+        <Feather name={tile.icon} size={24} color="#1F2937" />
       </View>
+      <Text style={styles.tileTitle}>{tile.title}</Text>
+      <Text style={styles.tileSubtitle}>{tile.subtitle}</Text>
     </TouchableOpacity>
   );
 
@@ -150,47 +121,43 @@ const HomeDashboardScreen = ({ navigation }) => {
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
         }
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
-        <WaveHeader
-          title="Client Management"
-          subtitle="Manage clients, projects & invoices"
-          height={180}
-          showBackButton
-          backButtonPress={() => navigation.goBack()}
-        />
-
-        {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <View style={styles.searchBar}>
-            <Feather name="search" size={20} color={COLORS.primary} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search clients, projects..."
-              placeholderTextColor={COLORS.textDim}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-          </View>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation.goBack()}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Feather name="arrow-left" size={22} color={COLORS.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Dashboard</Text>
+          <TouchableOpacity
+            style={styles.profileBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Feather name="user" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
         </View>
 
         {/* Stats Row */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{dashboardStats.totalClients}</Text>
-            <Text style={styles.statLabel}>Clients</Text>
+            <Text style={styles.statValue}>{dashboardStats.projects || 0}</Text>
+            <Text style={styles.statLabel}>PROJECTS</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{dashboardStats.activeProjects}</Text>
-            <Text style={styles.statLabel}>Projects</Text>
+            <Text style={styles.statValue}>{dashboardStats.materialRequests || 0}</Text>
+            <Text style={styles.statLabel}>REQUESTS</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{dashboardStats.recentInvoices || 0}</Text>
-            <Text style={styles.statLabel}>Invoices</Text>
+            <Text style={styles.statValue}>{dashboardStats.quotations || 0}</Text>
+            <Text style={styles.statLabel}>QUOTES</Text>
           </View>
         </View>
 
@@ -202,8 +169,13 @@ const HomeDashboardScreen = ({ navigation }) => {
           ))}
         </View>
 
-        <View style={{ height: 40 }} />
+        {/* Extra space for scrolling */}
+        <View style={{ height: 120 }} />
       </ScrollView>
+
+      {/* Bottom Navigation */}
+      <BottomNavBar navigation={navigation} activeTab="home" />
+
     </View>
   );
 };
@@ -217,7 +189,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 20,
+    flexGrow: 1,
+    paddingBottom: 150,
   },
   loadingContainer: {
     flex: 1,
@@ -228,59 +201,106 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: COLORS.primary,
-    fontWeight: '500',
+    color: COLORS.textMuted,
   },
-  searchContainer: {
-    paddingHorizontal: 20,
-    marginTop: 16,
-  },
-  searchBar: {
+  header: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingTop: 60,
+    paddingHorizontal: 24,
+    paddingBottom: 16,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    flex: 1,
+    textAlign: 'center',
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 12,
-    fontSize: 16,
-    color: COLORS.text,
-    fontWeight: '500',
   },
   statsRow: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    marginTop: 20,
     gap: 10,
   },
   statCard: {
     flex: 1,
     backgroundColor: COLORS.cardBg,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
   },
   statValue: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '700',
-    color: COLORS.primary,
+    color: '#1F2937', // Dark text
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: COLORS.textMuted,
     fontWeight: '600',
     marginTop: 4,
-    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  clientManagementCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.cardBg,
+    marginHorizontal: 20,
+    marginTop: 20,
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  cmIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cmContent: {
+    flex: 1,
+    marginLeft: 14,
+  },
+  cmTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  cmSubtitle: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginTop: 2,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
     color: COLORS.text,
     marginHorizontal: 20,
@@ -295,35 +315,50 @@ const styles = StyleSheet.create({
   },
   tile: {
     width: (width - 44) / 2,
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.primary,
     borderRadius: 16,
     padding: 20,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-  },
-  tileContent: {
     alignItems: 'center',
   },
   tileIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.primary,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)', // More visible white background for icon
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
   },
   tileTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
-    color: COLORS.text,
+    color: '#1F2937', // Dark text on yellow
     textAlign: 'center',
     marginBottom: 4,
   },
   tileSubtitle: {
-    fontSize: 12,
-    color: COLORS.textMuted,
+    fontSize: 11,
+    color: 'rgba(31, 41, 55, 0.7)', // Dark transparent text
     textAlign: 'center',
+  },
+  bottomNav: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.cardBg,
+    paddingVertical: 12,
+    paddingBottom: 24,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.cardBorder,
+  },
+  navItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navLabel: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginTop: 4,
+    fontWeight: '500',
   },
 });
 

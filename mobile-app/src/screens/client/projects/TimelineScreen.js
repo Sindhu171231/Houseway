@@ -41,7 +41,7 @@ const preloadImages = async () => {
     ].map(image => {
       return Asset.fromModule(image).downloadAsync();
     });
-    
+
     await Promise.all(cacheImages);
     console.log('All timeline images preloaded successfully');
   } catch (error) {
@@ -52,58 +52,8 @@ const preloadImages = async () => {
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
 // Default timeline stages
-const defaultTimelineStages = [
-  {
-    id: 0,
-    name: "Consultation",
-    description: "Initial client meeting and requirements gathering",
-    duration: "Floor 0",
-    color: "#FF6B6B",
-    darkColor: "#E74C3C",
-    icon: "chatbubbles-outline",
-    status: "completed"
-  },
-  {
-    id: 1,
-    name: "Moodboards", 
-    description: "Design concepts and visual direction",
-    duration: "Floor 1",
-    color: "#4ECDC4",
-    darkColor: "#16A085",
-    icon: "color-palette-outline", 
-    status: "completed"
-  },
-  {
-    id: 2,
-    name: "Procurement",
-    description: "Sourcing materials and resources", 
-    duration: "Floor 2",
-    color: "#45B7D1",
-    darkColor: "#2980B9",
-    icon: "basket-outline",
-    status: "in-progress"
-  },
-  {
-    id: 3,
-    name: "Execution",
-    description: "Implementation and construction phase",
-    duration: "Floor 3",
-    color: "#96CEB4",
-    darkColor: "#27AE60",
-    icon: "construct-outline",
-    status: "pending"
-  },
-  {
-    id: 4,
-    name: "Handover",
-    description: "Project completion and delivery",
-    duration: "Floor 4",
-    color: "#FFEAA7",
-    darkColor: "#F39C12",
-    icon: "checkmark-circle-outline",
-    status: "pending"
-  }
-];
+// Initial state should be empty to avoid flashing mock data
+const defaultTimelineStages = [];
 
 export default function DynamicElevatorTimeline() {
   const route = useRoute();
@@ -125,7 +75,7 @@ export default function DynamicElevatorTimeline() {
   const [isMoving, setIsMoving] = useState(false);
   const [shouldAnimate, setShouldAnimate] = useState(false);
   const [visitCount, setVisitCount] = useState(0);
-  
+
   const elevatorY = useRef(new Animated.Value(0)).current;
   const floorScaleAnimations = useRef(
     defaultTimelineStages.map(() => new Animated.Value(1))
@@ -133,7 +83,7 @@ export default function DynamicElevatorTimeline() {
 
   // Dynamic building dimensions
   const BASE_HEIGHT = 150;
-  const FLOOR_HEIGHT = 120; 
+  const FLOOR_HEIGHT = 120;
   const TOP_HEIGHT = 100;
   const numberOfStages = timelineData.stages.length;
   const totalBuildingHeight = BASE_HEIGHT + (FLOOR_HEIGHT * numberOfStages) + TOP_HEIGHT;
@@ -163,7 +113,7 @@ export default function DynamicElevatorTimeline() {
           const savedFloor = parseInt(saved, 10);
           console.log('[Timeline] Loaded previous floor from storage:', savedFloor);
           setPreviousFloor(savedFloor);
-          
+
           // Set initial elevator position to previous floor WITHOUT animation
           const initialY = getFloorYPosition(savedFloor);
           elevatorY.setValue(initialY);
@@ -186,7 +136,7 @@ export default function DynamicElevatorTimeline() {
         setLiftState("closed");
       }
     };
-    
+
     if (projectId) {
       loadPreviousFloor();
     }
@@ -196,14 +146,14 @@ export default function DynamicElevatorTimeline() {
   useFocusEffect(
     React.useCallback(() => {
       console.log('[Timeline] Screen focused - will trigger animation');
-      
+
       // Reset animation states when screen comes into focus
       if (project && timelineData.stages.length > 0) {
         // Small delay to ensure everything is ready
         const timer = setTimeout(() => {
           setShouldAnimate(true);
         }, 300);
-        
+
         return () => clearTimeout(timer);
       }
     }, [project, timelineData.stages.length])
@@ -221,30 +171,30 @@ export default function DynamicElevatorTimeline() {
     if (!shouldAnimate || isMoving || !imagesLoaded) return;
 
     console.log('[Timeline] Starting animation sequence');
-    
+
     // Determine target floor based on progress
     const currentProgress = project?.progress?.percentage || 0;
     const targetFloor = Math.min(
       Math.floor(currentProgress / 20),
       timelineData.stages.length - 1
     );
-    
+
     console.log('[Timeline] Progress:', currentProgress, '% - Target floor:', targetFloor);
     console.log('[Timeline] Previous floor:', previousFloor, '- Will animate to:', targetFloor);
-    
+
     // Reset animation trigger
     setShouldAnimate(false);
-    
+
     // Always show animation, even if at same floor (doors close then open)
     setTimeout(() => {
       setIsMoving(true);
       setLiftState("closed");
       Vibration.vibrate(50);
-      
+
       const currentY = getFloorYPosition(previousFloor);
       const targetY = getFloorYPosition(targetFloor);
       const distance = Math.abs(targetFloor - previousFloor);
-      
+
       // If same floor, just do a quick door animation
       if (distance === 0) {
         console.log('[Timeline] Same floor - door animation only');
@@ -258,11 +208,11 @@ export default function DynamicElevatorTimeline() {
         }, 800);
         return;
       }
-      
+
       // Different floor - animate movement
       const duration = Math.max(1500, distance * 800);
       console.log('[Timeline] Moving from Y:', currentY, 'to Y:', targetY, 'Duration:', duration);
-      
+
       Animated.timing(elevatorY, {
         toValue: targetY,
         duration: duration,
@@ -271,11 +221,11 @@ export default function DynamicElevatorTimeline() {
         console.log('[Timeline] Animation complete - arrived at floor', targetFloor);
         setCurrentFloor(targetFloor);
         setPreviousFloor(targetFloor); // Update previous floor for next visit
-        
+
         // Save current floor to storage for next visit
         AsyncStorage.setItem(`elevator_floor_${projectId}`, targetFloor.toString())
           .catch(err => console.error('Error saving floor:', err));
-        
+
         setTimeout(() => {
           setLiftState("open");
           setTimeout(() => {
@@ -293,34 +243,33 @@ export default function DynamicElevatorTimeline() {
     try {
       setIsLoading(true);
       const response = await projectsAPI.getProjectById(projectId);
-      
+
       if (response.success && response.data.project) {
         const projectData = response.data.project;
         setProject(projectData);
 
-        // Map project progress to timeline stages
-        const stages = defaultTimelineStages.map((stage, index) => {
-          let status = 'pending';
-          const currentProgress = projectData?.progress?.percentage || 0;
-          
-          if (index < Math.floor(currentProgress / 20)) {
-            status = 'completed';
-          } else if (index === Math.floor(currentProgress / 20)) {
-            status = 'in-progress';
-          }
+        // Only show stages if they exist in the project's timeline milestones
+        let stages = [];
+        const milestones = projectData.timeline?.milestones || [];
 
-          return {
-            ...stage,
-            id: index, // Ensure ID matches index
-            duration: `Floor ${index}`, // Update floor numbering
-            status,
-            description: projectData?.timeline?.milestones?.[index]?.description || stage.description,
-          };
-        });
+        if (milestones.length > 0) {
+          stages = milestones.map((m, index) => {
+            return {
+              id: index,
+              name: m.title || m.name || `Phase ${index + 1}`,
+              description: m.description || '',
+              duration: `Floor ${index}`,
+              color: m.status === 'completed' ? '#388E3C' : m.status === 'in-progress' ? '#B8860B' : '#666666',
+              darkColor: m.status === 'completed' ? '#2E7D32' : m.status === 'in-progress' ? '#936C09' : '#444444',
+              icon: m.icon || (m.status === 'completed' ? 'checkmark-circle' : 'time-outline'),
+              status: m.status || 'pending'
+            };
+          });
+        }
 
         setTimelineData({
           projectName: projectData?.title || "Project Timeline",
-          stages
+          stages: stages
         });
       }
     } catch (error) {
@@ -353,22 +302,22 @@ export default function DynamicElevatorTimeline() {
 
   const moveElevator = (toFloor) => {
     console.log('[Elevator] Manual move from', currentFloor, 'to', toFloor);
-    
+
     if (toFloor === currentFloor || toFloor < 0 || toFloor >= timelineData.stages.length) {
       console.log('[Elevator] Invalid move');
       return;
     }
-    
+
     setIsMoving(true);
     setLiftState("closed");
     setPreviousFloor(currentFloor);
-    
+
     Vibration.vibrate(50);
-    
+
     const targetY = getFloorYPosition(toFloor);
     const distance = Math.abs(toFloor - currentFloor);
     const duration = Math.max(1200, distance * 600);
-    
+
     setTimeout(() => {
       Animated.timing(elevatorY, {
         toValue: targetY,
@@ -377,7 +326,7 @@ export default function DynamicElevatorTimeline() {
       }).start(() => {
         console.log('[Elevator] Arrived at floor', toFloor);
         setCurrentFloor(toFloor);
-        
+
         // Save floor to storage
         AsyncStorage.setItem(`elevator_floor_${projectId}`, toFloor.toString())
           .catch(err => console.error('Error saving floor:', err));
@@ -397,7 +346,7 @@ export default function DynamicElevatorTimeline() {
   const renderDynamicBuilding = () => {
     const components = [];
     let currentY = 0;
-    
+
     // 1. Building Top (rendered first, at top)
     components.push(
       <Image
@@ -417,7 +366,7 @@ export default function DynamicElevatorTimeline() {
       />
     );
     currentY += TOP_HEIGHT;
-    
+
     // 2. Floors - REVERSED ORDER (top floor to bottom floor visually)
     // But numbered bottom to top (Floor 0 at bottom)
     for (let visualIndex = numberOfStages - 1; visualIndex >= 0; visualIndex--) {
@@ -425,13 +374,13 @@ export default function DynamicElevatorTimeline() {
       const stage = timelineData.stages[floorNumber];
       const isCurrentFloor = currentFloor === floorNumber;
       const isPreviousFloor = previousFloor === floorNumber;
-      
+
       components.push(
-        <Animated.View 
-          key={`floor-${floorNumber}`} 
+        <Animated.View
+          key={`floor-${floorNumber}`}
           style={[
-            styles.floorContainer, 
-            { 
+            styles.floorContainer,
+            {
               top: currentY,
               transform: [{ scale: floorScaleAnimations[floorNumber] }],
             }
@@ -451,23 +400,23 @@ export default function DynamicElevatorTimeline() {
             fadeDuration={0}
             cache="force-cache"
           />
-          
+
           {/* Floor highlight */}
           {(isCurrentFloor || isPreviousFloor) && (
-            <View 
+            <View
               style={[
-                styles.floorHighlight, 
-                { 
-                  backgroundColor: isCurrentFloor 
-                    ? stage.color + '30' 
+                styles.floorHighlight,
+                {
+                  backgroundColor: isCurrentFloor
+                    ? stage.color + '30'
                     : stage.color + '15',
                   width: buildingWidth,
-                  height: FLOOR_HEIGHT 
+                  height: FLOOR_HEIGHT
                 }
-              ]} 
+              ]}
             />
           )}
-          
+
           {/* Floor information - Left side */}
           <View style={styles.floorInfo}>
             <TouchableOpacity
@@ -475,8 +424,8 @@ export default function DynamicElevatorTimeline() {
               disabled={isMoving || currentFloor === floorNumber}
             >
               <View style={[
-                styles.floorNumber, 
-                { 
+                styles.floorNumber,
+                {
                   backgroundColor: isCurrentFloor ? '#3C5046' : '#7F8C8D',
                   transform: [{ scale: isCurrentFloor ? 1.15 : 1 }],
                   elevation: isCurrentFloor ? 6 : 3,
@@ -485,7 +434,7 @@ export default function DynamicElevatorTimeline() {
                 <Text style={styles.floorNumberText}>{floorNumber}</Text>
               </View>
             </TouchableOpacity>
-            
+
             {/* Stage name on building */}
             <View style={[
               styles.stageLabelOnBuilding,
@@ -494,23 +443,23 @@ export default function DynamicElevatorTimeline() {
               <Text style={styles.stageNameOnBuilding}>{stage.name}</Text>
             </View>
           </View>
-          
+
           {/* Right side - Status indicator */}
           <View style={styles.floorRightInfo}>
             <View style={[
               styles.completionIndicator,
-              { 
-                backgroundColor: stage.status === 'completed' ? '#3C5046' : 
-                                stage.status === 'in-progress' ? '#D4AF7C' : '#BDC3C7'
+              {
+                backgroundColor: stage.status === 'completed' ? '#3C5046' :
+                  stage.status === 'in-progress' ? '#D4AF7C' : '#BDC3C7'
               }
             ]}>
-              <Ionicons 
+              <Ionicons
                 name={
-                  stage.status === 'completed' ? 'checkmark' : 
-                  stage.status === 'in-progress' ? 'time' : 'ellipse'
-                } 
-                size={16} 
-                color="white" 
+                  stage.status === 'completed' ? 'checkmark' :
+                    stage.status === 'in-progress' ? 'time' : 'ellipse'
+                }
+                size={16}
+                color="white"
               />
             </View>
           </View>
@@ -518,7 +467,7 @@ export default function DynamicElevatorTimeline() {
       );
       currentY += FLOOR_HEIGHT;
     }
-    
+
     // 3. Building Base (at bottom)
     components.push(
       <Image
@@ -537,7 +486,7 @@ export default function DynamicElevatorTimeline() {
         cache="force-cache"
       />
     );
-    
+
     return components;
   };
 
@@ -570,110 +519,123 @@ export default function DynamicElevatorTimeline() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F5F5F0" />
-      
+
       {/* Building Container */}
-      <ScrollView 
+      <ScrollView
         style={styles.mainContent}
         contentContainerStyle={styles.mainContentContainer}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.buildingContainer}>
-          <View 
-            style={[
-              styles.building, 
-              { 
-                height: totalBuildingHeight, 
-                width: buildingWidth 
-              }
-            ]}
-          >
-            {renderDynamicBuilding()}
-            
-            {/* Elevator - positioned from bottom */}
-            <Animated.Image
-              source={getLiftImage()}
-              style={[
-                styles.elevator,
-                {
-                  height: FLOOR_HEIGHT * 0.8,
-                  width: 80,
-                  right: 20,
-                  bottom: 0,
-                  transform: [{ translateY: Animated.multiply(elevatorY, -1) }],
-                }
-              ]}
-              resizeMode="contain"
-              fadeDuration={0}
-              cache="force-cache"
-            />
-          </View>
-          
-          {/* Current Stage Info */}
-          <View style={[styles.currentStageCard, { width: buildingWidth }]}>
-            <View style={[
-              styles.currentStageIconContainer,
-              { backgroundColor: timelineData.stages[currentFloor]?.color || '#3498DB' }
-            ]}>
-              <Ionicons 
-                name={timelineData.stages[currentFloor]?.icon || 'checkmark-circle-outline'} 
-                size={32} 
-                color="white" 
-              />
+          {timelineData.stages.length === 0 ? (
+            <View style={styles.emptyTimelineContainer}>
+              <Ionicons name="construct-outline" size={80} color="#B8860B" style={{ opacity: 0.5 }} />
+              <Text style={styles.emptyTimelineTitle}>Schedule Pending</Text>
+              <Text style={styles.emptyTimelineText}>
+                The design team is currently finalizing your project timeline. Check back soon for updates!
+              </Text>
             </View>
-            <View style={styles.currentStageDetails}>
-              <Text style={styles.currentStageTitle}>
-                Floor {currentFloor}: {timelineData.stages[currentFloor]?.name || 'N/A'}
-              </Text>
-              <Text style={styles.currentStageDescription}>
-                {timelineData.stages[currentFloor]?.description || ''}
-              </Text>
-              
-              {/* Progress Bar */}
-              <View style={styles.currentStageProgressBar}>
-                <View 
+          ) : (
+            <>
+              <View
+                style={[
+                  styles.building,
+                  {
+                    height: totalBuildingHeight,
+                    width: buildingWidth
+                  }
+                ]}
+              >
+                {renderDynamicBuilding()}
+
+                {/* Elevator - positioned from bottom */}
+                <Animated.Image
+                  source={getLiftImage()}
                   style={[
-                    styles.currentStageProgressFill,
-                    { 
-                      width: `${project?.progress?.percentage || 0}%`,
-                      backgroundColor: timelineData.stages[currentFloor]?.darkColor || '#2980B9'
+                    styles.elevator,
+                    {
+                      height: FLOOR_HEIGHT * 0.8,
+                      width: 80,
+                      right: 20,
+                      bottom: 0,
+                      transform: [{ translateY: Animated.multiply(elevatorY, -1) }],
                     }
-                  ]} 
+                  ]}
+                  resizeMode="contain"
+                  fadeDuration={0}
+                  cache="force-cache"
                 />
               </View>
-              <View style={styles.progressRow}>
-                <Text style={styles.currentStageProgressText}>
-                  {project?.progress?.percentage || 0}% Complete
-                </Text>
-                <Text style={styles.stageStatus}>
-                  {timelineData.stages[currentFloor]?.status === 'completed' ? '✓ Completed' :
-                   timelineData.stages[currentFloor]?.status === 'in-progress' ? '⏱ In Progress' :
-                   '⏳ Pending'}
-                </Text>
-              </View>
-              
-              {/* Project Info */}
-              {project && (
-                <View style={styles.projectMetaInfo}>
-                  <View style={styles.metaItem}>
-                    <Ionicons name="calendar-outline" size={14} color="#7F8C8D" />
-                    <Text style={styles.metaText}>
-                      Start: {project.timeline?.startDate ? 
-                        new Date(project.timeline.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 
-                        'N/A'}
-                    </Text>
-                  </View>
-                  <View style={styles.metaItem}>
-                    <Ionicons name="flag-outline" size={14} color="#7F8C8D" />
-                    <Text style={styles.metaText}>
-                      Target: {project.timeline?.expectedEndDate ? 
-                        new Date(project.timeline.expectedEndDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 
-                        'N/A'}
-                    </Text>
-                  </View>
+
+              {/* Current Stage Info */}
+              <View style={[styles.currentStageCard, { width: buildingWidth }]}>
+                <View style={[
+                  styles.currentStageIconContainer,
+                  { backgroundColor: timelineData.stages[currentFloor]?.color || '#B8860B' }
+                ]}>
+                  <Ionicons
+                    name={timelineData.stages[currentFloor]?.icon || 'checkmark-circle-outline'}
+                    size={32}
+                    color="white"
+                  />
                 </View>
-              )}
-            </View>
-          </View>
+                <View style={styles.currentStageDetails}>
+                  <Text style={styles.currentStageTitle}>
+                    Floor {currentFloor}: {timelineData.stages[currentFloor]?.name || 'N/A'}
+                  </Text>
+                  <Text style={styles.currentStageDescription}>
+                    {timelineData.stages[currentFloor]?.description || ''}
+                  </Text>
+
+                  {/* Progress Bar */}
+                  <View style={styles.currentStageProgressBar}>
+                    <View
+                      style={[
+                        styles.currentStageProgressFill,
+                        {
+                          width: `${project?.progress?.percentage || 0}%`,
+                          backgroundColor: timelineData.stages[currentFloor]?.darkColor || '#B8860B'
+                        }
+                      ]}
+                    />
+                  </View>
+                  <View style={styles.progressRow}>
+                    <Text style={styles.currentStageProgressText}>
+                      {project?.progress?.percentage || 0}% Complete
+                    </Text>
+                    <Text style={styles.stageStatus}>
+                      {timelineData.stages[currentFloor]?.status === 'completed' ? '✓ Completed' :
+                        timelineData.stages[currentFloor]?.status === 'in-progress' ? '⏱ In Progress' :
+                          '⏳ Pending'}
+                    </Text>
+                  </View>
+
+                  {/* Project Info */}
+                  {project && (
+                    <View style={styles.projectMetaInfo}>
+                      <View style={styles.metaItem}>
+                        <Ionicons name="calendar-outline" size={14} color="#7F8C8D" />
+                        <Text style={styles.metaText}>
+                          Start: {project.timeline?.startDate ?
+                            new Date(project.timeline.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) :
+                            'N/A'}
+                        </Text>
+                      </View>
+                      <View style={styles.metaItem}>
+                        <Ionicons name="flag-outline" size={14} color="#7F8C8D" />
+                        <Text style={styles.metaText}>
+                          Target: {project.timeline?.expectedEndDate ?
+                            new Date(project.timeline.expectedEndDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) :
+                            'N/A'}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              </View>
+            </>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -725,6 +687,7 @@ const styles = StyleSheet.create({
   mainContentContainer: {
     alignItems: 'center',
     paddingVertical: 20,
+    flexGrow: 1,
   },
   buildingContainer: {
     alignItems: 'center',

@@ -8,12 +8,21 @@ const WebStyleInjector = () => {
       const style = document.createElement('style');
       style.textContent = `
         /* Global web styles for Houseway app */
+        html, body, #root {
+          height: 100%;
+          min-height: 100%;
+          display: flex;
+          flex-direction: column;
+          flex: 1;
+        }
+
         body {
           margin: 0;
           padding: 0;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
           background-color: #f5f5f5;
           line-height: 1.6;
+          /* overflow-y: hidden; - REMOVED to allow scrolling fallback */
         }
         
         * {
@@ -230,18 +239,18 @@ const WebStyleInjector = () => {
         .pt-1 { padding-top: 8px; }
         .pb-1 { padding-bottom: 8px; }
       `;
-      
+
       document.head.appendChild(style);
-      
+
       // Set page title
       document.title = 'Houseway - House Design Company';
-      
+
       // Set meta tags
       const metaViewport = document.querySelector('meta[name="viewport"]');
       if (metaViewport) {
         metaViewport.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
       }
-      
+
       // Add favicon if not present
       if (!document.querySelector('link[rel="icon"]')) {
         const favicon = document.createElement('link');
@@ -249,7 +258,7 @@ const WebStyleInjector = () => {
         favicon.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🏠</text></svg>';
         document.head.appendChild(favicon);
       }
-      
+
       return () => {
         // Cleanup if needed
         if (style.parentNode) {

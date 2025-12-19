@@ -256,6 +256,21 @@ export const invoicesAPI = {
     api.get('/invoices/stats/overview', { params: { clientId } }),
 };
 
+// -----------------------------
+// 👥 CLIENTS API
+// -----------------------------
+export const clientsAPI = {
+  getClients: (params = {}) => api.get('/clients', { params }),
+  getClientById: (id) => api.get(`/clients/${id}`),
+  getClient: (id) => api.get(`/clients/${id}`),  // Alias for getClientById
+  getClientProjects: (clientId) => api.get(`/clients/${clientId}/projects`),
+  getClientProjectInvoices: (clientId, projectId) =>
+    api.get(`/clients/${clientId}/projects/${projectId}/invoices`),
+  updateClient: (id, data) => api.put(`/clients/${id}`, data, {
+    headers: { 'Content-Type': 'application/json' }
+  }),
+};
+
 
 
 // -----------------------------

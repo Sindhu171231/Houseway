@@ -9,7 +9,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  ActivityIndicator} from 'react-native';
+  ActivityIndicator
+} from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import theme from '../../styles/theme';
 import { Picker } from '@react-native-picker/picker';
@@ -18,7 +19,7 @@ const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const { login, error, clearError } = useAuth();
 
 
@@ -34,7 +35,7 @@ const LoginScreen = ({ navigation }) => {
 
     try {
       const result = await login(email.trim().toLowerCase(), password);
-      
+
       if (result.success) {
         // Navigation will be handled automatically by the AuthContext
         console.log('Login successful');
@@ -53,9 +54,9 @@ const LoginScreen = ({ navigation }) => {
   };
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.content}>
@@ -95,7 +96,7 @@ const LoginScreen = ({ navigation }) => {
                 editable={!isLoading}
               />
             </View>
- 
+
 
 
             {/* Error Message */}
@@ -107,7 +108,7 @@ const LoginScreen = ({ navigation }) => {
 
             {/* Login Button */}
             <TouchableOpacity
-              style={{...styles.loginButton, ...(isLoading && styles.disabledButton)}}
+              style={{ ...styles.loginButton, ...(isLoading && styles.disabledButton) }}
               onPress={handleLogin}
               disabled={isLoading}
             >
@@ -121,7 +122,7 @@ const LoginScreen = ({ navigation }) => {
             {/* Register Link */}
             <View style={styles.registerContainer}>
               <Text style={styles.registerText}>Don't have an account? </Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={handleRegisterNavigation}
                 disabled={isLoading}
               >
@@ -171,7 +172,7 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     flexGrow: 1,
-    justifyContent: 'center',
+    paddingBottom: 40,
   },
   content: {
     padding: 20,
