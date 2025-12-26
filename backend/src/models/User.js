@@ -31,19 +31,25 @@ const userSchema = new mongoose.Schema({
     minlength: [6, 'Password must be at least 6 characters long'],
   },
   role: {
-  type: String,
-  required: true,
-  enum: ['owner', 'employee', 'vendor', 'client', 'guest'],
-},
-subRole: {
-  type: String,
-  enum: ['designTeam', 'vendorTeam', 'executionTeam', 'none'],
-  default: 'none',
-},
-approvedByAdmin: {
-  type: Boolean,
-  default: false,
-},
+    type: String,
+    required: true,
+    enum: ['owner', 'employee', 'vendor', 'client', 'guest'],
+  },
+  subRole: {
+    type: String,
+    enum: ['designTeam', 'vendorTeam', 'executionTeam', 'none'],
+    default: 'none',
+  },
+  // Auto-generated client ID (for client role users)
+  clientId: {
+    type: String,
+    unique: true,
+    sparse: true,  // Allow null values for non-client users
+  },
+  approvedByAdmin: {
+    type: Boolean,
+    default: false,
+  },
 
   phone: {
     type: String,
@@ -129,6 +135,19 @@ approvedByAdmin: {
     ref: 'User',
     default: null,
   },
+  // Password reset OTP fields
+  passwordResetOTP: {
+    type: String,
+    default: null,
+  },
+  passwordResetExpiry: {
+    type: Date,
+    default: null,
+  },
+  passwordResetAttempts: {
+    type: Number,
+    default: 0,
+  },
 }, {
   timestamps: true,
 });
@@ -138,19 +157,36 @@ userSchema.index({ role: 1 });
 userSchema.index({ isActive: 1 });
 
 // Virtual for full name
-userSchema.virtual('fullName').get(function() {
+userSchema.virtual('fullName').get(function () {
   return `${this.firstName} ${this.lastName}`;
 });
 
 // Hash password before saving
-userSchema.pre('save', async function(next) {
-  // Only hash the password if it has been modified (or is new)
-  if (!this.isModified('password')) return next();
-  
+userSchema.pre('save', async function (next) {
   try {
-    // Hash password with cost of 12
-    const hashedPassword = await bcrypt.hash(this.password, 12);
-    this.password = hashedPassword;
+    // Generate clientId for new client users
+    if (this.isNew && this.role === 'client' && !this.clientId) {
+      const lastClient = await this.constructor.findOne({ clientId: { $exists: true, $ne: null } })
+        .sort({ clientId: -1 })
+        .select('clientId');
+
+      let nextNumber = 1;
+      if (lastClient && lastClient.clientId) {
+        const match = lastClient.clientId.match(/CLT-(\d+)/);
+        if (match) {
+          nextNumber = parseInt(match[1]) + 1;
+        }
+      }
+      this.clientId = `CLT-${String(nextNumber).padStart(5, '0')}`;
+    }
+
+    // Only hash the password if it has been modified (or is new)
+    if (this.isModified('password')) {
+      // Hash password with cost of 12
+      const hashedPassword = await bcrypt.hash(this.password, 12);
+      this.password = hashedPassword;
+    }
+
     next();
   } catch (error) {
     next(error);
@@ -158,24 +194,24 @@ userSchema.pre('save', async function(next) {
 });
 
 // Instance method to check password
-userSchema.methods.comparePassword = async function(candidatePassword) {
+userSchema.methods.comparePassword = async function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
 
 // Instance method to get user data without sensitive information
-userSchema.methods.toSafeObject = function() {
+userSchema.methods.toSafeObject = function () {
   const userObject = this.toObject();
   delete userObject.password;
   return userObject;
 };
 
 // Static method to find user by email
-userSchema.statics.findByEmail = function(email) {
+userSchema.statics.findByEmail = function (email) {
   return this.findOne({ email: email.toLowerCase() });
 };
 
 // Static method to get users by role
-userSchema.statics.findByRole = function(role) {
+userSchema.statics.findByRole = function (role) {
   return this.find({ role, isActive: true });
 };
 

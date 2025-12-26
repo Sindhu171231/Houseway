@@ -11,30 +11,19 @@ import {
   Modal,
   Alert,
   Platform,
+  Linking,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../context/AuthContext';
-import { projectsAPI } from '../../utils/api';
+import { projectsAPI, filesAPI, usersAPI } from '../../utils/api';
 import { useAttendance } from '../../context/AttendanceContext';
 import ScheduleTab from '../../components/clientManagement/ScheduleTab';
 import InvoicesListTab from '../../components/clientManagement/InvoicesListTab';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import BottomNavBar from '../../components/common/BottomNavBar';
-
-// Premium Beige Theme
-const COLORS = {
-  primary: '#B8860B',        // Dark Golden Rod
-  primaryLight: 'rgba(184, 134, 11, 0.15)',
-  background: '#F5F5F0',     // Beige
-  cardBg: '#FFFFFF',         // White cards
-  cardBorder: 'rgba(184, 134, 11, 0.1)',
-  text: '#1A1A1A',           // Dark text
-  textMuted: '#666666',      // Muted text
-  success: '#388E3C',
-  warning: '#F57C00',
-  danger: '#D32F2F',
-};
+import * as DocumentPicker from 'expo-document-picker';
+import { COLORS } from '../../styles/colors';
 
 const ProjectDetailScreen = ({ navigation, route }) => {
   const { projectId } = route.params;
@@ -54,8 +43,9 @@ const ProjectDetailScreen = ({ navigation, route }) => {
 
   // Project edit state
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editForm, setEditForm] = useState({ title: '', budget: '', endDate: new Date().toISOString() });
+  const [editForm, setEditForm] = useState({ title: '', budget: '', startDate: '', endDate: '' });
   const [showProjectDatePicker, setShowProjectDatePicker] = useState(false);
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Timeline milestones state
@@ -64,8 +54,8 @@ const ProjectDetailScreen = ({ navigation, route }) => {
   const [editingMilestone, setEditingMilestone] = useState(null);
   const [milestoneForm, setMilestoneForm] = useState({ name: '', description: '', status: 'pending' });
 
-  // Simplified tabs - added Payments and Timeline
-  const tabs = ['Overview', 'Timeline', 'Payments', 'Schedule', 'Invoices', 'Team'];
+  // Simplified tabs - removed Timeline, added Files
+  const tabs = ['Overview', 'Payments', 'Files', 'Schedule', 'Invoices', 'Team'];
 
   useEffect(() => {
     // Protection: If employee is not checked in, redirect to Check-In screen
@@ -107,9 +97,13 @@ const ProjectDetailScreen = ({ navigation, route }) => {
           setMilestones([]);
         }
 
-        // Initialize payment schedule from project
+        // Initialize payment schedule from project (add IDs for frontend state)
         if (proj.paymentSchedule && proj.paymentSchedule.length > 0) {
-          setPaymentSchedule(proj.paymentSchedule);
+          const scheduleWithIds = proj.paymentSchedule.map((payment, index) => ({
+            ...payment,
+            id: payment._id || `payment_${Date.now()}_${index}` // Use MongoDB _id or generate temporary ID
+          }));
+          setPaymentSchedule(scheduleWithIds);
         } else {
           setPaymentSchedule([]);
         }
@@ -170,17 +164,69 @@ const ProjectDetailScreen = ({ navigation, route }) => {
     } else {
       setPaymentSchedule(prev => [...prev, newPayment]);
     }
+
+    // Save to database
+    savePaymentSchedule([...paymentSchedule.filter(p => p.id !== editingPayment?.id), newPayment]);
     setShowPaymentModal(false);
   };
 
-  const togglePaymentStatus = (paymentId) => {
-    setPaymentSchedule(prev => prev.map(p =>
-      p.id === paymentId ? { ...p, status: p.status === 'paid' ? 'pending' : 'paid' } : p
-    ));
+  const togglePaymentStatus = async (paymentId) => {
+    let shouldRedirect = false;
+    const updatedSchedule = paymentSchedule.map(p => {
+      if (p.id === paymentId) {
+        const nextStatus = p.status === 'paid' ? 'pending' : 'paid';
+        if (nextStatus === 'paid') shouldRedirect = true;
+        return { ...p, status: nextStatus };
+      }
+      return p;
+    });
+
+    setPaymentSchedule(updatedSchedule);
+
+    // Save to database
+    savePaymentSchedule(updatedSchedule);
+
+    if (shouldRedirect) {
+      Alert.alert(
+        'Payment Received',
+        'Would you like to upload an invoice PDF for this payment now?',
+        [
+          { text: 'Later', style: 'cancel' },
+          {
+            text: 'Upload Invoice',
+            onPress: () => setActiveTab('invoices')
+          }
+        ]
+      );
+    }
   };
 
   const deletePayment = (paymentId) => {
-    setPaymentSchedule(prev => prev.filter(p => p.id !== paymentId));
+    const updated = paymentSchedule.filter(p => p.id !== paymentId);
+    setPaymentSchedule(updated);
+    savePaymentSchedule(updated);
+  };
+
+  // Save payment schedule to database
+  const savePaymentSchedule = async (schedule) => {
+    try {
+      // Convert the schedule to match backend schema (remove 'id' field for DB)
+      const formattedSchedule = schedule.map(payment => ({
+        name: payment.name,
+        amount: payment.amount,
+        dueDate: payment.dueDate,
+        status: payment.status || 'pending'
+      }));
+
+      await projectsAPI.updateProject(projectId, {
+        paymentSchedule: formattedSchedule
+      });
+
+      console.log('✅ Payment schedule saved successfully');
+    } catch (error) {
+      console.error(' Error saving payment schedule:', error);
+      Alert.alert('Error', 'Failed to save payment schedule. Please try again.');
+    }
   };
 
   // Milestone functions
@@ -241,7 +287,8 @@ const ProjectDetailScreen = ({ navigation, route }) => {
     setEditForm({
       title: project?.title || '',
       budget: String(project?.budget?.estimated || ''),
-      endDate: project?.timeline?.endDate || new Date().toISOString(),
+      startDate: project?.timeline?.startDate || '',
+      endDate: project?.timeline?.expectedEndDate || project?.timeline?.endDate || '',
     });
     setShowEditModal(true);
   };
@@ -254,7 +301,8 @@ const ProjectDetailScreen = ({ navigation, route }) => {
         budget: { estimated: parseFloat(editForm.budget) || 0 },
         timeline: {
           ...project?.timeline,
-          endDate: editForm.endDate || undefined,
+          startDate: editForm.startDate || undefined,
+          expectedEndDate: editForm.endDate || undefined,
           milestones: milestones
         },
         paymentSchedule: paymentSchedule,
@@ -427,13 +475,10 @@ const ProjectDetailScreen = ({ navigation, route }) => {
         {/* Tab Content */}
         <View style={styles.tabContent}>
           {activeTab === 'Overview' && <OverviewTab project={project} />}
-          {activeTab === 'Timeline' && (
-            <MilestonesTab
-              milestones={milestones}
-              onAdd={() => openMilestoneModal()}
-              onEdit={openMilestoneModal}
-              onToggle={toggleMilestoneStatus}
-              onDelete={deleteMilestone}
+          {activeTab === 'Files' && (
+            <FilesTab
+              projectId={projectId}
+              onUploadSuccess={loadProject}
             />
           )}
           {activeTab === 'Payments' && (
@@ -447,7 +492,7 @@ const ProjectDetailScreen = ({ navigation, route }) => {
           )}
           {activeTab === 'Schedule' && <ScheduleTab projectId={projectId} />}
           {activeTab === 'Invoices' && <InvoicesListTab projectId={projectId} navigation={navigation} />}
-          {activeTab === 'Team' && <TeamTab project={project} navigation={navigation} />}
+          {activeTab === 'Team' && <TeamTab project={project} navigation={navigation} onRefresh={loadProject} currentUser={user} />}
         </View>
 
         <View style={{ height: 150 }} />
@@ -619,14 +664,41 @@ const ProjectDetailScreen = ({ navigation, route }) => {
               keyboardType="numeric"
             />
 
-            <Text style={styles.modalLabel}>End Date</Text>
+            <Text style={styles.modalLabel}>Start Date</Text>
+            <TouchableOpacity
+              style={styles.modalInput}
+              onPress={() => setShowStartDatePicker(true)}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ color: editForm.startDate ? COLORS.text : COLORS.textMuted }}>
+                  {editForm.startDate ? new Date(editForm.startDate).toLocaleDateString() : 'Select Start Date'}
+                </Text>
+                <Feather name="calendar" size={18} color={COLORS.success} />
+              </View>
+            </TouchableOpacity>
+
+            {showStartDatePicker && (
+              <DateTimePicker
+                value={editForm.startDate ? new Date(editForm.startDate) : new Date()}
+                mode="date"
+                display="default"
+                onChange={(event, selectedDate) => {
+                  setShowStartDatePicker(false);
+                  if (selectedDate) {
+                    setEditForm(prev => ({ ...prev, startDate: selectedDate.toISOString() }));
+                  }
+                }}
+              />
+            )}
+
+            <Text style={styles.modalLabel}>Expected End Date</Text>
             <TouchableOpacity
               style={styles.modalInput}
               onPress={() => setShowProjectDatePicker(true)}
             >
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={{ color: editForm.endDate ? COLORS.text : COLORS.textMuted }}>
-                  {editForm.endDate ? new Date(editForm.endDate).toLocaleDateString() : 'Select Date'}
+                  {editForm.endDate ? new Date(editForm.endDate).toLocaleDateString() : 'Select End Date'}
                 </Text>
                 <Feather name="calendar" size={18} color={COLORS.primary} />
               </View>
@@ -885,15 +957,301 @@ const InvoicesTab = ({ projectId, navigation }) => (
   </View>
 );
 
-const FilesTab = ({ projectId }) => (
-  <View style={styles.tabContainer}>
-    <View style={styles.centeredContent}>
-      <Feather name="folder" size={48} color={COLORS.primary} />
-      <Text style={styles.placeholderTitle}>Project Files</Text>
-      <Text style={styles.placeholderText}>Documents and files will appear here</Text>
+const FilesTab = ({ projectId, onUploadSuccess }) => {
+  const [files, setFiles] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [fileName, setFileName] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
+
+  useEffect(() => {
+    loadFiles();
+  }, []);
+
+  const loadFiles = async () => {
+    try {
+      setLoading(true);
+      // Fetch ONLY documents, exclude invoices
+      const response = await filesAPI.getFiles({ projectId, category: 'documents' });
+      if (response.success) {
+        setFiles(response.data.files || []);
+      }
+    } catch (error) {
+      console.error('Error loading files:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const file = result.assets[0];
+        setSelectedFile(file);
+        setFileName(file.name || '');
+        setShowModal(true);
+      }
+    } catch (error) {
+      console.error('Error picking document:', error);
+      Alert.alert('Error', 'Failed to pick document');
+    }
+  };
+
+  const uploadFile = async (fileAsset) => {
+    try {
+      console.log('[Upload] Starting upload for:', {
+        name: fileAsset.name,
+        type: fileAsset.mimeType,
+        size: fileAsset.size,
+        hasFileObj: !!fileAsset.file,
+        platform: Platform.OS
+      });
+      setUploading(true);
+
+      const formData = new FormData();
+
+      if (Platform.OS === 'web') {
+        console.log('[Upload] Web detected, creating File object from:', {
+          uri: fileAsset.uri,
+          name: fileName || fileAsset.name,
+          type: fileAsset.mimeType
+        });
+
+        try {
+          const response = await fetch(fileAsset.uri);
+          const blob = await response.blob();
+
+          console.log('[Upload] Blob fetched:', {
+            size: blob.size,
+            type: blob.type
+          });
+
+          // Create a proper File object with name and type for web
+          const file = new File(
+            [blob],
+            fileName || fileAsset.name || 'document.pdf',
+            { type: fileAsset.mimeType || blob.type || 'application/octet-stream' }
+          );
+
+          console.log('[Upload] File object created:', {
+            name: file.name,
+            size: file.size,
+            type: file.type
+          });
+
+          formData.append('file', file);
+
+          // Verify FormData content
+          console.log('[Upload] FormData created. Checking entries...');
+          for (let pair of formData.entries()) {
+            if (pair[1] instanceof File) {
+              console.log('[Upload] FormData contains File:', pair[0], '=', pair[1].name, pair[1].size, 'bytes');
+            } else {
+              console.log('[Upload] FormData contains:', pair[0], '=', pair[1]);
+            }
+          }
+        } catch (fetchErr) {
+          console.error('[Upload] Failed to fetch blob on web:', fetchErr);
+          formData.append('file', fileAsset.file || fileAsset);
+        }
+      } else {
+        // On Native, use the {uri, name, type} object
+        const fileToUpload = {
+          uri: Platform.OS === 'ios' ? fileAsset.uri.replace('file://', '') : fileAsset.uri,
+          name: fileName || fileAsset.name || 'upload.pdf',
+          type: fileAsset.mimeType || 'application/octet-stream',
+        };
+        formData.append('file', fileToUpload);
+      }
+      formData.append('projectId', projectId);
+      formData.append('category', 'documents');
+
+      const response = await filesAPI.uploadFile(formData);
+
+      if (response.success) {
+        Alert.alert('Success', 'File uploaded to Cloud successfully!');
+        setShowModal(false);
+        setSelectedFile(null);
+        setFileName('');
+        loadFiles();
+        if (onUploadSuccess) onUploadSuccess();
+      }
+    } catch (error) {
+      console.error('Upload failed:', error);
+      Alert.alert('Upload Failed', error.message || 'Could not upload file to Cloud');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDownload = (url) => {
+    if (!url) {
+      Alert.alert('Error', 'No document link available');
+      return;
+    }
+    Linking.openURL(url).catch(err => {
+      console.error('Link Error:', err);
+      Alert.alert('Error', 'Could not open the file link');
+    });
+  };
+
+  const handleDeleteFile = (fileId, fileName) => {
+    Alert.alert(
+      'Delete Document',
+      `Are you sure you want to delete "${fileName}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await filesAPI.deleteFile(fileId);
+              Alert.alert('Success', 'File deleted successfully');
+              loadFiles();
+            } catch (error) {
+              console.error('Delete failed:', error);
+              Alert.alert('Error', 'Failed to delete file');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const formatSize = (bytes) => {
+    if (!bytes) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  return (
+    <View style={styles.tabContainer}>
+      {/* Header - only show when files exist */}
+      {files.length > 0 && (
+        <View style={styles.paymentHeaderRow}>
+          <Text style={styles.sectionLabel}>Project Documents</Text>
+          <TouchableOpacity
+            style={[styles.addPaymentBtn, uploading && { opacity: 0.6 }]}
+            onPress={handlePickDocument}
+            disabled={uploading}
+          >
+            <Feather name="plus" size={16} color="#1F2937" />
+            <Text style={styles.addPaymentText}>Add File</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Upload Form Modal */}
+      <Modal
+        visible={showModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Upload Document</Text>
+
+            <Text style={styles.modalLabel}>File Name</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={fileName}
+              onChangeText={setFileName}
+              placeholder="Enter file name"
+              placeholderTextColor={COLORS.textMuted}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => {
+                  setShowModal(false);
+                  setSelectedFile(null);
+                  setFileName('');
+                }}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalSaveBtn, (uploading || !fileName.trim()) && { opacity: 0.6 }]}
+                onPress={() => uploadFile(selectedFile)}
+                disabled={uploading || !fileName.trim()}
+              >
+                {uploading ? (
+                  <ActivityIndicator color="#1F2937" />
+                ) : (
+                  <Text style={styles.modalSaveText}>Upload to Cloud</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {loading && files.length === 0 ? (
+        <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }} />
+      ) : files.length === 0 ? (
+        <View style={styles.centeredContent}>
+          <Feather name="upload-cloud" size={64} color={COLORS.primary} />
+          <Text style={styles.placeholderTitle}>No Documents Yet</Text>
+          <Text style={styles.placeholderText}>Upload project documents to secure cloud storage</Text>
+
+          <TouchableOpacity
+            style={[styles.actionButton, uploading && { opacity: 0.6 }]}
+            onPress={handlePickDocument}
+            disabled={uploading}
+          >
+            {uploading ? (
+              <ActivityIndicator color="#1F2937" />
+            ) : (
+              <>
+                <Feather name="upload" size={20} color={COLORS.background} />
+                <Text style={styles.actionButtonText}>Upload Document</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : (
+        files.map((file) => (
+          <View key={file._id} style={styles.infoCard}>
+            <View style={styles.teamAvatar}>
+              <Feather
+                name={file.mimeType?.includes('image') ? 'image' : 'file-text'}
+                size={20}
+                color={COLORS.primary}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.teamName} numberOfLines={1}>{file.originalName}</Text>
+              <Text style={styles.teamRole}>{formatSize(file.size)} • {new Date(file.createdAt).toLocaleDateString()}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity onPress={() => handleDownload(file.url || file.path)}>
+                <Feather name="external-link" size={18} color={COLORS.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleDownload(file.downloadUrl || file.path)}>
+                <Feather name="download" size={18} color={COLORS.success} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleDeleteFile(file._id, file.originalName)}>
+                <Feather name="trash-2" size={18} color={COLORS.danger} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))
+      )}
     </View>
-  </View>
-);
+  );
+};
 
 const NotesTab = ({ projectId }) => (
   <View style={styles.tabContainer}>
@@ -905,44 +1263,247 @@ const NotesTab = ({ projectId }) => (
   </View>
 );
 
-const TeamTab = ({ project, navigation }) => (
-  <View style={styles.tabContainer}>
-    <Text style={styles.sectionLabel}>Assigned Team</Text>
+const TeamTab = ({ project, navigation, onRefresh, currentUser }) => {
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [employees, setEmployees] = useState([]);
+  const [filteredEmployees, setFilteredEmployees] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
-    {project.assignedEmployees && project.assignedEmployees.length > 0 ? (
-      project.assignedEmployees.map((employee, index) => (
-        <View key={employee._id || index} style={styles.teamMember}>
+  // Designer is the current user, executive is the assigned employee (different from designer)
+  const designerEmployee = currentUser;
+  const executiveEmployee = project.assignedEmployees?.find(
+    emp => emp._id !== currentUser?._id && (emp.subRole === 'executiveTeam' || !emp.subRole)
+  );
+  const hasExecutive = !!executiveEmployee;
+
+  const loadEmployees = async () => {
+    try {
+      setLoadingEmployees(true);
+      const response = await usersAPI.getUsersByRole('employee');
+      if (response.data?.users) {
+        // Filter only executive team employees
+        const executiveEmployees = response.data.users.filter(
+          emp => emp.subRole === 'executiveTeam' || !emp.subRole
+        );
+        setEmployees(executiveEmployees);
+        setFilteredEmployees(executiveEmployees);
+      }
+    } catch (error) {
+      console.error('Error loading employees:', error);
+    } finally {
+      setLoadingEmployees(false);
+    }
+  };
+
+  // Filter employees based on search query
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setFilteredEmployees(employees);
+      return;
+    }
+    const filtered = employees.filter(emp =>
+      `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(query.toLowerCase()) ||
+      emp.email.toLowerCase().includes(query.toLowerCase())
+    );
+    setFilteredEmployees(filtered);
+  };
+
+  const handleAssignEmployee = async (employeeId) => {
+    try {
+      setAssigning(true);
+      const response = await projectsAPI.assignEmployee(project._id, employeeId);
+      if (response.success) {
+        Platform.OS === 'web'
+          ? alert('Executive assigned successfully!')
+          : Alert.alert('Success', 'Executive assigned successfully!');
+        setShowAssignModal(false);
+        setSearchQuery('');
+        if (onRefresh) onRefresh();
+      }
+    } catch (error) {
+      console.error('Error assigning employee:', error);
+      Platform.OS === 'web'
+        ? alert('Failed to assign executive')
+        : Alert.alert('Error', 'Failed to assign executive');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleRemoveEmployee = async (employeeId) => {
+    const doRemove = async () => {
+      try {
+        setRemoving(true);
+        const response = await projectsAPI.unassignEmployee(project._id, employeeId);
+        if (response.success) {
+          Platform.OS === 'web'
+            ? alert('Executive removed successfully!')
+            : Alert.alert('Success', 'Executive removed successfully!');
+          if (onRefresh) onRefresh();
+        }
+      } catch (error) {
+        console.error('Error removing employee:', error);
+        Platform.OS === 'web'
+          ? alert('Failed to remove executive')
+          : Alert.alert('Error', 'Failed to remove executive');
+      } finally {
+        setRemoving(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Remove this executive from the project?')) doRemove();
+    } else {
+      Alert.alert('Confirm', 'Remove this executive from the project?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: doRemove },
+      ]);
+    }
+  };
+
+  const openAssignModal = () => {
+    loadEmployees();
+    setSearchQuery('');
+    setShowAssignModal(true);
+  };
+
+  return (
+    <View style={styles.tabContainer}>
+      {/* Designer Team - Current User */}
+      <View style={styles.paymentHeaderRow}>
+        <Text style={styles.sectionLabel}>Design Team</Text>
+      </View>
+
+      {designerEmployee && (
+        <View style={styles.teamMember}>
+          <View style={styles.teamAvatar}>
+            <Feather name="user" size={20} color={COLORS.success} />
+          </View>
+          <View style={[styles.teamInfo, { flex: 1 }]}>
+            <Text style={styles.teamName}>
+              {designerEmployee.firstName} {designerEmployee.lastName}
+              <Text style={{ color: COLORS.success, fontWeight: '700' }}> (You)</Text>
+            </Text>
+            <Text style={styles.teamRole}>{designerEmployee.subRole || 'Design Team'}</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Executive Team - Assigned Executive */}
+      <View style={[styles.paymentHeaderRow, { marginTop: 20 }]}>
+        <Text style={styles.sectionLabel}>
+          Executive Team {executiveEmployee ? '(1 max)' : ''}
+        </Text>
+        <TouchableOpacity style={styles.addPaymentBtn} onPress={openAssignModal}>
+          <Feather name={executiveEmployee ? "edit-2" : "user-plus"} size={16} color="#1F2937" />
+          <Text style={styles.addPaymentText}>{executiveEmployee ? 'Edit' : 'Assign'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {executiveEmployee ? (
+        <View style={styles.teamMember}>
           <View style={styles.teamAvatar}>
             <Feather name="user" size={20} color={COLORS.primary} />
           </View>
-          <View style={styles.teamInfo}>
+          <View style={[styles.teamInfo, { flex: 1 }]}>
             <Text style={styles.teamName}>
-              {employee.firstName} {employee.lastName}
+              {executiveEmployee.firstName} {executiveEmployee.lastName}
             </Text>
-            <Text style={styles.teamRole}>{employee.subRole || 'Team Member'}</Text>
+            <Text style={styles.teamRole}>{executiveEmployee.subRole || 'Executive Team'}</Text>
           </View>
-          <TouchableOpacity style={styles.removeBtn}>
-            <Feather name="x" size={18} color={COLORS.danger} />
+          <TouchableOpacity
+            style={{ padding: 8 }}
+            onPress={openAssignModal}
+            disabled={assigning}
+          >
+            <Feather name="edit-2" size={18} color={COLORS.warning} />
           </TouchableOpacity>
         </View>
-      ))
-    ) : (
-      <View style={styles.centeredContent}>
-        <Feather name="users" size={48} color={COLORS.textMuted} />
-        <Text style={styles.placeholderTitle}>No Team Assigned</Text>
-        <Text style={styles.placeholderText}>Add team members to this project</Text>
-      </View>
-    )}
+      ) : (
+        <View style={styles.centeredContent}>
+          <Feather name="users" size={48} color={COLORS.textMuted} />
+          <Text style={styles.placeholderTitle}>No Executive Assigned</Text>
+          <Text style={styles.placeholderText}>Tap "Assign" to add ONE executive team member</Text>
+        </View>
+      )}
 
-    <TouchableOpacity
-      style={styles.actionButton}
-      onPress={() => navigation.navigate('CreateProject', { projectId: project._id, editMode: true })}
-    >
-      <Feather name="user-plus" size={20} color="#1F2937" />
-      <Text style={styles.actionButtonText}>Manage Team</Text>
-    </TouchableOpacity>
-  </View>
-);
+      {/* Assign Executive Modal */}
+      <Modal visible={showAssignModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              {hasExecutive ? 'Change Executive' : 'Assign Executive'}
+            </Text>
+            {hasExecutive && (
+              <Text style={{ color: COLORS.warning, fontSize: 12, marginBottom: 10 }}>
+                ⚠️ This will replace the current executive
+              </Text>
+            )}
+
+            {/* Search Input */}
+            <View style={[styles.modalInput, { flexDirection: 'row', alignItems: 'center' }]}>
+              <Feather name="search" size={18} color={COLORS.textMuted} />
+              <TextInput
+                style={{ flex: 1, marginLeft: 8, color: COLORS.text }}
+                value={searchQuery}
+                onChangeText={handleSearch}
+                placeholder="Search executives..."
+                placeholderTextColor={COLORS.textMuted}
+              />
+              {searchQuery ? (
+                <TouchableOpacity onPress={() => handleSearch('')}>
+                  <Feather name="x" size={18} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {loadingEmployees ? (
+              <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 20 }} />
+            ) : filteredEmployees.length === 0 ? (
+              <View style={{ alignItems: 'center', padding: 20 }}>
+                <Feather name="users" size={40} color={COLORS.textMuted} />
+                <Text style={{ color: COLORS.textMuted, marginTop: 10 }}>
+                  {searchQuery ? 'No matching executives' : 'No available executives'}
+                </Text>
+              </View>
+            ) : (
+              <ScrollView style={{ maxHeight: 300 }}>
+                {filteredEmployees.map((emp) => (
+                  <TouchableOpacity
+                    key={emp._id}
+                    style={styles.teamMember}
+                    onPress={() => handleAssignEmployee(emp._id)}
+                    disabled={assigning}
+                  >
+                    <View style={styles.teamAvatar}>
+                      <Feather name="user" size={20} color={COLORS.primary} />
+                    </View>
+                    <View style={styles.teamInfo}>
+                      <Text style={styles.teamName}>{emp.firstName} {emp.lastName}</Text>
+                      <Text style={styles.teamRole}>{emp.email}</Text>
+                    </View>
+                    <Feather name="plus-circle" size={20} color={COLORS.success} />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+
+            <TouchableOpacity
+              style={[styles.modalCancelBtn, { marginTop: 16 }]}
+              onPress={() => setShowAssignModal(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   container: {

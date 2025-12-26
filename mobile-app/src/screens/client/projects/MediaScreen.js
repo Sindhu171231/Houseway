@@ -17,22 +17,23 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRoute } from "@react-navigation/native";
-import { projectsAPI } from "../../../utils/api";
+import { projectsAPI, clientsAPI, filesAPI } from "../../../utils/api";
+import { useAuth } from "../../../context/AuthContext";
 
 export default function MediaScreen() {
   const route = useRoute();
   const { projectId } = route.params || {};
+  const { user } = useAuth();
 
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [activeFilter, setActiveFilter] = useState("All");
   const [mediaData, setMediaData] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+  const [files, setFiles] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const highlights = mediaData.filter((item) => item.type === "photo");
   const screenWidth = Dimensions.get("window").width;
-  const flatListRef = useRef(null);
-  const currentIndexRef = useRef(0);
 
   // Fetch project media
   useEffect(() => {
@@ -67,9 +68,9 @@ export default function MediaScreen() {
             title: image.name || 'Project Image',
             subtitle: image.type || 'Image',
             date: image.uploadedAt ? new Date(image.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A',
-            image: image.url ? `http://192.168.1.5:5000${image.url}` : null,
-            thumbnail: image.url ? `http://192.168.1.5:5000${image.url}` : null,
-            fileUrl: image.url ? `http://192.168.1.5:5000${image.url}` : null,
+            image: image.url ? `http://localhost:5000${image.url}` : null,
+            thumbnail: image.url ? `http://localhost:5000${image.url}` : null,
+            fileUrl: image.url ? `http://localhost:5000${image.url}` : null,
             uploadedBy: image.uploadedBy,
             uploadedAt: image.uploadedAt,
           }));
@@ -86,7 +87,7 @@ export default function MediaScreen() {
             date: doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A',
             image: null,
             thumbnail: null,
-            fileUrl: doc.url ? `http://192.168.1.5:5000${doc.url}` : null,
+            fileUrl: doc.url ? `http://localhost:5000${doc.url}` : null,
             uploadedBy: doc.uploadedBy,
             uploadedAt: doc.uploadedAt,
           }));
@@ -106,6 +107,83 @@ export default function MediaScreen() {
         console.log('[MediaScreen] No project data found or API error:', response.message);
         setMediaData([]);
       }
+
+      // Fetch invoices for clients
+      if (user && user.role === 'client') {
+        try {
+          const invRes = await clientsAPI.getClientProjectInvoices(user._id, projectId);
+          if (invRes.success) {
+            const invData = (invRes.data.invoices || []).map((inv, index) => ({
+              id: inv._id || `invoice-${index}`,
+              type: 'invoice',
+              title: inv.invoiceNumber || `Invoice #${index + 1}`,
+              subtitle: `₹${(inv.totalAmount || 0).toLocaleString()}`,
+              date: inv.createdAt ? new Date(inv.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A',
+              status: inv.status,
+              fileUrl: inv.attachments?.[0]?.url || null,
+              total: inv.totalAmount,
+            }));
+            setInvoices(invData);
+          }
+        } catch (e) {
+          console.log('[MediaScreen] Error loading invoices:', e);
+        }
+      }
+
+      // Fetch files from files API (uploaded by employees)
+      try {
+        // Fetch ALL files for this project, not just documents
+        const filesRes = await filesAPI.getProjectFiles(projectId);
+        console.log('[MediaScreen] Files API response:', filesRes);
+
+        if (filesRes.success || filesRes.data) {
+          const allFiles = filesRes.data?.files || [];
+
+          // Separate media (images/videos) from documents
+          const mediaFiles = allFiles.filter(file =>
+            file.mimeType?.startsWith('image/') || file.mimeType?.startsWith('video/')
+          ).map((file, index) => {
+            const fileUrl = file.url || file.path || file.downloadUrl || null;
+            const fullUrl = fileUrl?.startsWith('http') ? fileUrl : (fileUrl ? `http://localhost:5000${fileUrl}` : null);
+            return {
+              id: file._id || `file-media-${index}`,
+              type: file.mimeType?.startsWith('video/') ? 'video' : 'photo',
+              title: file.originalName || file.name || 'Media File',
+              subtitle: file.category || 'Progress',
+              date: file.createdAt ? new Date(file.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A',
+              image: fullUrl,
+              thumbnail: fullUrl,
+              fileUrl: fullUrl,
+              mimeType: file.mimeType,
+              uploadedAt: file.createdAt,
+            };
+          });
+
+          // Add uploaded media files to existing media data
+          setMediaData(prevMedia => [...prevMedia, ...mediaFiles]);
+          console.log('[MediaScreen] Added media files:', mediaFiles.length);
+
+          // Documents only
+          const documentFiles = allFiles.filter(file =>
+            !file.mimeType?.startsWith('image/') && !file.mimeType?.startsWith('video/')
+          ).map((file, index) => {
+            const fileUrl = file.url || file.path || null;
+            const fullUrl = fileUrl?.startsWith('http') ? fileUrl : (fileUrl ? `http://localhost:5000${fileUrl}` : null);
+            return {
+              id: file._id || `file-${index}`,
+              type: 'document',
+              title: file.originalName || file.name || 'Document',
+              subtitle: file.category || 'File',
+              date: file.createdAt ? new Date(file.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A',
+              fileUrl: fullUrl,
+              mimeType: file.mimeType,
+            };
+          });
+          setFiles(documentFiles);
+        }
+      } catch (e) {
+        console.log('[MediaScreen] Error loading files:', e);
+      }
     } catch (error) {
       console.error('Error loading project media:', error);
       Alert.alert('Error', `Failed to load project media: ${error.message || 'Unknown error'}`);
@@ -115,23 +193,7 @@ export default function MediaScreen() {
     }
   };
 
-  // Auto-scroll highlights
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (flatListRef.current && highlights.length > 0) {
-        let nextIndex = (currentIndexRef.current + 1) % highlights.length;
-        flatListRef.current.scrollToIndex({ index: nextIndex, animated: true });
-        currentIndexRef.current = nextIndex;
-      }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [highlights.length]);
 
-  const getItemLayout = (_, index) => ({
-    length: screenWidth * 0.85 + 20,
-    offset: (screenWidth * 0.85 + 20) * index,
-    index,
-  });
 
   // Mapping tabs to actual type values
   const typeMap = {
@@ -139,12 +201,17 @@ export default function MediaScreen() {
     Photos: "photo",
     Videos: "video",
     Documents: "document",
+    Invoices: "invoice",
   };
 
-  const filteredData =
-    activeFilter === "All"
-      ? mediaData
-      : mediaData.filter((item) => item.type === typeMap[activeFilter]);
+  const getFilteredData = () => {
+    if (activeFilter === "All") return mediaData;
+    if (activeFilter === "Invoices") return invoices;
+    if (activeFilter === "Documents") return files;
+    return mediaData.filter((item) => item.type === typeMap[activeFilter]);
+  };
+
+  const filteredData = getFilteredData();
 
   if (isLoading) {
     return (
@@ -162,48 +229,12 @@ export default function MediaScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Highlights */}
-        <Text style={styles.sectionHeader}>Milestone Highlights</Text>
-        <FlatList
-          ref={flatListRef}
-          data={highlights}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          pagingEnabled
-          keyExtractor={(item) => item.id}
-          getItemLayout={getItemLayout}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[styles.highlightCard, { width: screenWidth * 0.85 }]}
-              onPress={() => {
-                setSelectedMedia(item);
-                setGalleryVisible(true);
-              }}
-            >
-              <Image
-                source={{ uri: item.image }}
-                style={styles.highlightImage}
-                onError={(error) => {
-                  console.log('Highlight image load error for:', item.image, error);
-                }}
-              />
-              <View style={styles.overlay} />
-              <View style={styles.highlightText}>
-                <Text style={styles.highlightTitle}>{item.title}</Text>
-                <Text style={styles.highlightDate}>{item.date}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-          onMomentumScrollEnd={(ev) => {
-            const offsetX = ev.nativeEvent.contentOffset.x;
-            const index = Math.round(offsetX / (screenWidth * 0.85 + 20));
-            currentIndexRef.current = index;
-          }}
-        />
+        {/* Section Header */}
+        <Text style={styles.sectionHeader}>Project Media & Files</Text>
 
         {/* Filter Tabs */}
         <View style={styles.filterRow}>
-          {["All", "Photos", "Videos", "Documents"].map((tab) => (
+          {["All", "Photos", "Videos", "Documents", "Invoices"].map((tab) => (
             <TouchableOpacity
               key={tab}
               style={[
@@ -224,82 +255,157 @@ export default function MediaScreen() {
           ))}
         </View>
 
-        {/* Media Grid */}
-        <View style={styles.grid}>
-          {filteredData.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="images-outline" size={64} color="#666" />
-              <Text style={styles.emptyText}>No {activeFilter.toLowerCase()} available</Text>
-              <Text style={styles.emptySubtext}>Media will appear here once uploaded to the project</Text>
-            </View>
-          ) : (
-            filteredData.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.gridItem}
-                onPress={() => {
-                  if (item.type === "document") {
-                    Linking.openURL(item.fileUrl);
-                  } else {
-                    setSelectedMedia(item);
-                    setGalleryVisible(true);
-                  }
-                }}
-              >
-                {item.type === "photo" && (
-                  <View style={styles.gridImageContainer}>
-                    {item.imageLoadError ? (
-                      // Fallback when image fails to load
-                      <View style={[styles.gridImage, styles.imageFallback]}>
-                        <Ionicons name="image-outline" size={40} color="#ccc" />
-                        <Text style={styles.fallbackText}>{item.title}</Text>
-                      </View>
-                    ) : (
+        {/* Media Grid for Photos/Videos OR Link List for Documents/Invoices */}
+        {(activeFilter === "Documents" || activeFilter === "Invoices") ? (
+          // Link-style list for Documents and Invoices
+          <View style={styles.linkList}>
+            {filteredData.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name={activeFilter === "Invoices" ? "receipt-outline" : "folder-outline"} size={64} color="#666" />
+                <Text style={styles.emptyText}>No {activeFilter.toLowerCase()} available</Text>
+                <Text style={styles.emptySubtext}>{activeFilter} will appear here once uploaded</Text>
+              </View>
+            ) : (
+              filteredData.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.linkRow}
+                  onPress={() => {
+                    if (item.fileUrl) {
+                      Linking.openURL(item.fileUrl).catch(err => {
+                        console.log('Error opening file:', err);
+                        Alert.alert('Error', 'Unable to open file');
+                      });
+                    } else {
+                      Alert.alert('No File', 'This item has no attached file.');
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.linkIconBox, {
+                    backgroundColor: item.type === 'invoice' ? 'rgba(229, 57, 53, 0.1)' : 'rgba(33, 150, 243, 0.1)'
+                  }]}>
+                    <Ionicons
+                      name={item.type === 'invoice' ? 'receipt-outline' : 'document-text-outline'}
+                      size={24}
+                      color={item.type === 'invoice' ? '#E53935' : '#2196F3'}
+                    />
+                  </View>
+                  <View style={styles.linkInfo}>
+                    <Text style={styles.linkTitle} numberOfLines={1}>{item.title}</Text>
+                    <Text style={styles.linkMeta}>
+                      {item.subtitle} • {item.date}
+                    </Text>
+                  </View>
+                  {item.type === 'invoice' && item.status && (
+                    <View style={[styles.linkStatusBadge, {
+                      backgroundColor: item.status === 'paid' ? 'rgba(56, 142, 60, 0.1)' : 'rgba(245, 124, 0, 0.1)'
+                    }]}>
+                      <Text style={[styles.linkStatusText, {
+                        color: item.status === 'paid' ? '#388E3C' : '#F57C00'
+                      }]}>
+                        {item.status.toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                  <Ionicons
+                    name={item.type === 'invoice' ? 'open-outline' : 'download-outline'}
+                    size={20}
+                    color={COLORS.primary}
+                    style={{ marginLeft: 8 }}
+                  />
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
+        ) : (
+          // Grid for Photos, Videos, All
+          <View style={styles.grid}>
+            {filteredData.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="images-outline" size={64} color="#666" />
+                <Text style={styles.emptyText}>No {activeFilter.toLowerCase()} available</Text>
+                <Text style={styles.emptySubtext}>Media will appear here once uploaded to the project</Text>
+              </View>
+            ) : (
+              filteredData.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.gridItem}
+                  onPress={() => {
+                    if (item.type === "document" || item.type === "invoice") {
+                      if (item.fileUrl) {
+                        Linking.openURL(item.fileUrl);
+                      }
+                    } else {
+                      setSelectedMedia(item);
+                      setGalleryVisible(true);
+                    }
+                  }}
+                >
+                  {item.type === "photo" && (
+                    <View style={styles.gridImageContainer}>
+                      {item.imageLoadError ? (
+                        <View style={[styles.gridImage, styles.imageFallback]}>
+                          <Ionicons name="image-outline" size={40} color="#ccc" />
+                          <Text style={styles.fallbackText}>{item.title}</Text>
+                        </View>
+                      ) : (
+                        <Image
+                          source={{ uri: item.image }}
+                          style={styles.gridImage}
+                          onError={(error) => {
+                            console.log('Image load error for:', item.image, error);
+                            setMediaData(prevData =>
+                              prevData.map(mediaItem =>
+                                mediaItem.id === item.id
+                                  ? { ...mediaItem, imageLoadError: true }
+                                  : mediaItem
+                              )
+                            );
+                          }}
+                        />
+                      )}
+                    </View>
+                  )}
+                  {item.type === "video" && (
+                    <View style={styles.videoItem}>
                       <Image
-                        source={{ uri: item.image }}
+                        source={{ uri: item.thumbnail }}
                         style={styles.gridImage}
                         onError={(error) => {
-                          console.log('Image load error for:', item.image, error);
-                          // Set error state for fallback handling
-                          setMediaData(prevData =>
-                            prevData.map(mediaItem =>
-                              mediaItem.id === item.id
-                                ? { ...mediaItem, imageLoadError: true }
-                                : mediaItem
-                            )
-                          );
+                          console.log('Thumbnail load error for:', item.thumbnail, error);
                         }}
                       />
-                    )}
-                  </View>
-                )}
-                {item.type === "video" && (
-                  <View style={styles.videoItem}>
-                    <Image
-                      source={{ uri: item.thumbnail }}
-                      style={styles.gridImage}
-                      onError={(error) => {
-                        console.log('Thumbnail load error for:', item.thumbnail, error);
-                      }}
-                    />
-                    <Ionicons
-                      name="play-circle"
-                      size={40}
-                      color="white"
-                      style={styles.playIcon}
-                    />
-                  </View>
-                )}
-                {item.type === "document" && (
-                  <View style={styles.docItem}>
-                    <Ionicons name="document-text-outline" size={40} color="#fff" />
-                    <Text style={styles.docText}>{item.title}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            ))
-          )}
-        </View>
+                      <Ionicons
+                        name="play-circle"
+                        size={40}
+                        color="white"
+                        style={styles.playIcon}
+                      />
+                    </View>
+                  )}
+                  {item.type === "document" && (
+                    <View style={styles.docItem}>
+                      <Ionicons name="document-text-outline" size={40} color="#fff" />
+                      <Text style={styles.docText}>{item.title}</Text>
+                    </View>
+                  )}
+                  {item.type === "invoice" && (
+                    <View style={[styles.docItem, { backgroundColor: '#4CAF50' }]}>
+                      <Ionicons name="receipt-outline" size={40} color="#fff" />
+                      <Text style={styles.docText}>{item.title}</Text>
+                      <Text style={[styles.docText, { fontSize: 11, opacity: 0.9 }]}>{item.subtitle}</Text>
+                      <View style={[styles.invoiceStatus, { backgroundColor: item.status === 'paid' ? '#2E7D32' : '#FF9800' }]}>
+                        <Text style={styles.invoiceStatusText}>{item.status?.toUpperCase()}</Text>
+                      </View>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {/* Modal */}
@@ -596,5 +702,62 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  invoiceStatus: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginTop: 6,
+  },
+  invoiceStatusText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  // NEW: Link-style list for Documents and Invoices
+  linkList: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.cardBorder,
+  },
+  linkIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  linkInfo: {
+    flex: 1,
+  },
+  linkTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  linkMeta: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginTop: 3,
+  },
+  linkStatusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  linkStatusText: {
+    fontSize: 10,
+    fontWeight: '700',
   },
 });

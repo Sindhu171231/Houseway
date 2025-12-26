@@ -70,23 +70,11 @@ export const authAPI = {
       headers: { 'Content-Type': 'application/json' },
     }),
 
-  // ✅ Dynamic register route (core fix)
+  // ✅ Dynamic register route (fixed 401 for self-registration)
   register: (userData) => {
-    let endpoint = '/auth/register-client'; // default
-
-    if (userData.role === 'employee') {
-      endpoint = '/auth/register-employee';
-    } else if (userData.role === 'vendor') {
-      endpoint = '/auth/register-vendor';
-    } else if (userData.role === 'owner') {
-      endpoint = '/auth/register';
-    } else if (userData.role === 'guest') {
-      endpoint = '/auth/register-guest';
-    }
-
-    console.log('[authAPI] Register endpoint:', endpoint, '| Data:', userData);
-
-    return api.post(endpoint, userData, {
+    // If we're on the RegisterScreen, we don't have a token yet.
+    // The backend's /auth/register handles role-based self-registration (and admin approval).
+    return api.post('/auth/register', userData, {
       headers: { 'Content-Type': 'application/json' },
     });
   },
@@ -103,6 +91,20 @@ export const authAPI = {
   uploadProfilePhoto: (formData) =>
     api.post('/auth/upload-profile-photo', formData),
   removeProfilePhoto: () => api.delete('/auth/remove-profile-photo'),
+
+  // Password reset via Email OTP
+  requestPasswordOTP: (email) =>
+    api.post('/auth/request-password-otp', { email }, {
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  verifyPasswordOTP: (email, otp) =>
+    api.post('/auth/verify-password-otp', { email, otp }, {
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  resetPasswordWithOTP: (email, resetToken, newPassword) =>
+    api.post('/auth/reset-password-with-otp', { email, resetToken, newPassword }, {
+      headers: { 'Content-Type': 'application/json' },
+    }),
 };
 
 // -----------------------------
@@ -126,6 +128,11 @@ export const usersAPI = {
   registerClient: (data) => api.post('/users/register-client', data, {
     headers: { 'Content-Type': 'application/json' },
   }),
+  // Profile photo methods
+  uploadProfilePhoto: (formData) => api.post('/users/profile-photo', formData, {
+    transformRequest: [(data) => data], // Prevent axios from transforming FormData
+  }),
+  deleteProfilePhoto: () => api.delete('/users/profile-photo'),
 };
 
 // -----------------------------
@@ -144,13 +151,29 @@ export const projectsAPI = {
     api.put(`/projects/${id}/assign-employee`, { employeeId }, {
       headers: { 'Content-Type': 'application/json' },
     }),
+  unassignEmployee: (id, employeeId) =>
+    api.delete(`/projects/${id}/unassign-employee/${employeeId}`),
   assignVendor: (id, vendorId) =>
     api.put(`/projects/${id}/assign-vendor`, { vendorId }, {
       headers: { 'Content-Type': 'application/json' },
     }),
+  unassignVendor: (id, vendorId) =>
+    api.delete(`/projects/${id}/unassign-vendor/${vendorId}`),
   updateProgress: (id, progressData) =>
     api.put(`/projects/${id}/progress`, progressData, {
       headers: { 'Content-Type': 'application/json' },
+    }),
+  // Timeline methods
+  addTimelineEvent: (id, eventData) =>
+    api.post(`/projects/${id}/timeline`, eventData, {
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  getTimeline: (id) => api.get(`/projects/${id}/timeline`),
+  // Image/Media upload - delegates to files API
+  uploadImages: (id, formData) =>
+    api.post('/files/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      params: { projectId: id },
     }),
 };
 
@@ -172,6 +195,8 @@ export const dashboardAPI = {
 // -----------------------------
 export const materialRequestsAPI = {
   getMaterialRequests: (params = {}) => api.get('/material-requests', { params }),
+  getAvailableRequests: (params = {}) => api.get('/material-requests', { params: { ...params, available: 'true' } }),
+  acceptMaterialRequest: (id) => api.post(`/material-requests/${id}/accept`),
   createMaterialRequest: (data) =>
     api.post('/material-requests', data, { headers: { 'Content-Type': 'application/json' } }),
 };
@@ -181,8 +206,13 @@ export const materialRequestsAPI = {
 // -----------------------------
 export const filesAPI = {
   getFiles: (params = {}) => api.get('/files', { params }),
-  uploadFile: (formData) => api.post('/files/upload', formData),
-  deleteFile: (id) => api.delete(`/files/${id}`),
+  getProjectFiles: (projectId, category) =>
+    api.get('/files', { params: { projectId, category } }),
+  uploadFile: (formData) => api.post('/files/upload', formData, {
+    // Don't set Content-Type manually - let axios/browser set it with correct boundary
+    transformRequest: [(data) => data], // Prevent axios from transforming FormData
+  }),
+  deleteFile: (id) => api.delete(`/files/id/${id}`),
 };
 
 // -----------------------------
@@ -239,6 +269,10 @@ export const invoicesAPI = {
   createInvoice: (data) => api.post('/invoices', data, {
     headers: { 'Content-Type': 'application/json' }
   }),
+  uploadInvoicePDF: (projectId, formData) =>
+    api.post(`/invoices/project/${projectId}/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }),
   getProjectInvoices: (projectId, params = {}) =>
     api.get(`/invoices/project/${projectId}`, { params }),
   getClientInvoices: (clientId, params = {}) =>
@@ -269,6 +303,14 @@ export const clientsAPI = {
   updateClient: (id, data) => api.put(`/clients/${id}`, data, {
     headers: { 'Content-Type': 'application/json' }
   }),
+
+  // Client self-service endpoints (for logged-in clients to access their own data)
+  getMyProjects: (params = {}) => api.get('/clients/me/projects', { params }),
+  getMyProjectDetails: (projectId) => api.get(`/clients/me/projects/${projectId}`),
+  getMyProjectMedia: (projectId, params = {}) =>
+    api.get(`/clients/me/projects/${projectId}/media`, { params }),
+  getMyProjectDocuments: (projectId) =>
+    api.get(`/clients/me/projects/${projectId}/documents`),
 };
 
 

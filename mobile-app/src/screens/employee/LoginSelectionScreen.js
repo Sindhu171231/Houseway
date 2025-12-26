@@ -18,6 +18,7 @@ const LoginSelectionScreen = ({ navigation }) => {
   const { user } = useAuth();
   const cardScale1 = new Animated.Value(1);
   const cardScale2 = new Animated.Value(1);
+  const cardScale3 = new Animated.Value(1);
 
   const handleCardPressIn = (cardScale) => {
     Animated.spring(cardScale, {
@@ -42,8 +43,11 @@ const LoginSelectionScreen = ({ navigation }) => {
   };
 
   const handleClientManagementPress = () => {
-    // If user is a designer (or we treat this as the designer entry point)
     navigation.navigate('HomeDashboard');
+  };
+
+  const handleExecutivePress = () => {
+    navigation.navigate('ExecutiveDashboard');
   };
 
   return (
@@ -160,6 +164,52 @@ const LoginSelectionScreen = ({ navigation }) => {
               </View>
             </TouchableOpacity>
           </Animated.View>
+
+          {/* Executive Team Card */}
+          <Animated.View style={[{ transform: [{ scale: cardScale3 }] }]}>
+            <TouchableOpacity
+              style={styles.executiveCard}
+              activeOpacity={0.9}
+              onPressIn={() => handleCardPressIn(cardScale3)}
+              onPressOut={() => handleCardPressOut(cardScale3)}
+              onPress={handleExecutivePress}>
+              <LinearGradient
+                colors={['#2E7D32', '#1B5E20']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.executiveGradient}>
+                <View style={[styles.cardIconContainer, styles.executiveIconContainer]}>
+                  <Feather name="hard-hat" size={40} color="#fff" />
+                </View>
+                <Text style={[styles.cardTitle, styles.executiveCardTitle]}>Executive Team</Text>
+                <Text style={[styles.cardDescription, styles.executiveCardDescription]}>
+                  Site updates, photos & progress tracking
+                </Text>
+              </LinearGradient>
+              <View style={styles.cardFeaturesSmall}>
+                <View style={styles.featureItem}>
+                  <Feather name="camera" size={16} color="#2E7D32" />
+                  <Text style={styles.featureText}>Upload Photos</Text>
+                </View>
+                <View style={styles.featureItem}>
+                  <Feather name="clock" size={16} color="#2E7D32" />
+                  <Text style={styles.featureText}>Timeline Updates</Text>
+                </View>
+                <View style={styles.featureItem}>
+                  <Feather name="trending-up" size={16} color="#2E7D32" />
+                  <Text style={styles.featureText}>Progress Tracking</Text>
+                </View>
+              </View>
+              <View style={styles.cardFooter}>
+                <Text style={[styles.cardActionText, { color: '#2E7D32' }]}>Open Dashboard →</Text>
+              </View>
+
+              {/* Role badge */}
+              <View style={styles.executiveBadge}>
+                <Text style={styles.executiveBadgeText}>EXECUTIVE</Text>
+              </View>
+            </TouchableOpacity>
+          </Animated.View>
         </View>
 
         {/* Bottom hint */}
@@ -173,6 +223,7 @@ const LoginSelectionScreen = ({ navigation }) => {
     </View>
   );
 };
+
 
 const styles = StyleSheet.create({
   container: {
@@ -373,6 +424,70 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#7487C1',
     fontWeight: '500',
+  },
+  // Executive Card Styles
+  executiveCard: {
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
+    elevation: 12,
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+  },
+  executiveGradient: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 30,
+    paddingBottom: 20,
+  },
+  executiveIconContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  executiveCardTitle: {
+    color: '#fff',
+  },
+  executiveCardDescription: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginBottom: 0,
+  },
+  cardFeaturesSmall: {
+    gap: 10,
+    padding: 20,
+    paddingTop: 16,
+    paddingBottom: 16,
+  },
+  executiveBadge: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    backgroundColor: '#81C784',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  executiveBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#1B5E20',
+    letterSpacing: 1,
+  },
+  roleBadge: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    backgroundColor: 'rgba(184, 134, 11, 0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  roleBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#B8860B',
+    letterSpacing: 1,
   },
 });
 

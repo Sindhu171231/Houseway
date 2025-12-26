@@ -5,13 +5,14 @@ import {
   Text,
   TouchableOpacity,
   Animated,
-  Dimensions,
+  useWindowDimensions,
   StyleSheet,
   StatusBar,
   ScrollView,
   Vibration,
   ActivityIndicator,
   Alert,
+  Platform,
 } from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +20,23 @@ import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/nativ
 import { projectsAPI } from '../../../utils/api';
 import { Asset } from 'expo-asset';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Safe vibration function for cross-device compatibility
+const safeVibrate = (pattern) => {
+  if (Platform.OS === 'web') {
+    // Vibration not supported on web
+    return;
+  }
+  try {
+    if (Array.isArray(pattern)) {
+      Vibration.vibrate(pattern);
+    } else {
+      Vibration.vibrate(pattern || 50);
+    }
+  } catch (error) {
+    console.log('[Vibration] Not supported:', error.message);
+  }
+};
 
 // Import building components
 import buildingBase from '../../../../assets/buildingBase.png';
@@ -49,16 +67,20 @@ const preloadImages = async () => {
   }
 };
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
-
 // Default timeline stages
-// Initial state should be empty to avoid flashing mock data
-const defaultTimelineStages = [];
+const defaultTimelineStages = [
+  { id: 0, name: 'Foundation', status: 'completed', color: '#388E3C', icon: 'construct-outline' },
+  { id: 1, name: 'Structure', status: 'in-progress', color: '#B8860B', icon: 'business-outline' },
+  { id: 2, name: 'Finishing', status: 'pending', color: '#666666', icon: 'color-palette-outline' },
+];
 
-export default function DynamicElevatorTimeline() {
+export default function DynamicElevatorTimeline({ timeline, isEmbedded = false }) {
   const route = useRoute();
   const navigation = useNavigation();
   const { projectId } = route.params || {};
+
+  // Use dynamic window dimensions for screen compatibility
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   // State for project data
   const [project, setProject] = useState(null);
@@ -81,18 +103,19 @@ export default function DynamicElevatorTimeline() {
     defaultTimelineStages.map(() => new Animated.Value(1))
   ).current;
 
-  // Dynamic building dimensions
-  const BASE_HEIGHT = 150;
-  const FLOOR_HEIGHT = 120;
-  const TOP_HEIGHT = 100;
+  // Dynamic building dimensions - responsive to screen size
+  const SCALE_FACTOR = Math.min(screenWidth / 390, 1.2); // Cap scale for larger screens
+  const BASE_HEIGHT = 150 * SCALE_FACTOR;
+  const FLOOR_HEIGHT = Math.min(130 * SCALE_FACTOR, screenHeight * 0.18); // Cap floor height
+  const TOP_HEIGHT = 110 * SCALE_FACTOR;
   const numberOfStages = timelineData.stages.length;
   const totalBuildingHeight = BASE_HEIGHT + (FLOOR_HEIGHT * numberOfStages) + TOP_HEIGHT;
-  const buildingWidth = screenWidth * 0.9;
+  const buildingWidth = Math.min(screenWidth * 0.92, 400); // Cap max width for larger screens
 
   // KEY FUNCTION: Calculate Y position for a floor (Floor 0 = bottom)
   const getFloorYPosition = (floorNumber) => {
     // Floor 0 is at the bottom, so we calculate from the base
-    return BASE_HEIGHT + (floorNumber * FLOOR_HEIGHT) + (FLOOR_HEIGHT * 0.5);
+    return BASE_HEIGHT + (floorNumber * FLOOR_HEIGHT) + (FLOOR_HEIGHT * 0.45);
   };
 
   // Preload images on mount
@@ -173,11 +196,18 @@ export default function DynamicElevatorTimeline() {
     console.log('[Timeline] Starting animation sequence');
 
     // Determine target floor based on progress
+    // If progress is 100%, it should be at the top floor
+    const totalStages = timelineData.stages.length;
     const currentProgress = project?.progress?.percentage || 0;
-    const targetFloor = Math.min(
-      Math.floor(currentProgress / 20),
-      timelineData.stages.length - 1
-    );
+
+    // Map percentage to floor index (0 to totalStages - 1)
+    let targetFloor = 0;
+    if (totalStages > 0) {
+      targetFloor = Math.min(
+        Math.floor((currentProgress / 100) * totalStages),
+        totalStages - 1
+      );
+    }
 
     console.log('[Timeline] Progress:', currentProgress, '% - Target floor:', targetFloor);
     console.log('[Timeline] Previous floor:', previousFloor, '- Will animate to:', targetFloor);
@@ -189,7 +219,7 @@ export default function DynamicElevatorTimeline() {
     setTimeout(() => {
       setIsMoving(true);
       setLiftState("closed");
-      Vibration.vibrate(50);
+      safeVibrate(50);
 
       const currentY = getFloorYPosition(previousFloor);
       const targetY = getFloorYPosition(targetFloor);
@@ -203,7 +233,7 @@ export default function DynamicElevatorTimeline() {
           setTimeout(() => {
             setLiftState("people");
             setIsMoving(false);
-            Vibration.vibrate([100, 50, 100]);
+            safeVibrate([100, 50, 100]);
           }, 600);
         }, 800);
         return;
@@ -231,7 +261,7 @@ export default function DynamicElevatorTimeline() {
           setTimeout(() => {
             setLiftState("people");
             setIsMoving(false);
-            Vibration.vibrate([100, 50, 100]);
+            safeVibrate([100, 50, 100]);
             console.log('[Timeline] Elevator sequence complete at floor', targetFloor);
           }, 600);
         }, 400);
@@ -248,12 +278,28 @@ export default function DynamicElevatorTimeline() {
         const projectData = response.data.project;
         setProject(projectData);
 
+        // Also load timeline events which contain startDate/endDate
+        let timelineEvents = [];
+        try {
+          const timelineResponse = await projectsAPI.getTimeline(projectId);
+          if (timelineResponse.success) {
+            timelineEvents = timelineResponse.data?.events || [];
+          }
+        } catch (err) {
+          console.log('No timeline events found');
+        }
+
         // Only show stages if they exist in the project's timeline milestones
         let stages = [];
         const milestones = projectData.timeline?.milestones || [];
 
         if (milestones.length > 0) {
           stages = milestones.map((m, index) => {
+            // Find matching timeline event for dates
+            const matchedEvent = timelineEvents.find(e =>
+              e.title?.toLowerCase().includes(m.title?.toLowerCase() || m.name?.toLowerCase())
+            );
+
             return {
               id: index,
               name: m.title || m.name || `Phase ${index + 1}`,
@@ -262,14 +308,16 @@ export default function DynamicElevatorTimeline() {
               color: m.status === 'completed' ? '#388E3C' : m.status === 'in-progress' ? '#B8860B' : '#666666',
               darkColor: m.status === 'completed' ? '#2E7D32' : m.status === 'in-progress' ? '#936C09' : '#444444',
               icon: m.icon || (m.status === 'completed' ? 'checkmark-circle' : 'time-outline'),
-              status: m.status || 'pending'
+              status: m.status || 'pending',
+              startDate: matchedEvent?.startDate || m.startDate,
+              endDate: matchedEvent?.endDate || m.endDate,
             };
           });
         }
 
         setTimelineData({
           projectName: projectData?.title || "Project Timeline",
-          stages: stages
+          stages: stages.length > 0 ? stages : defaultTimelineStages
         });
       }
     } catch (error) {
@@ -516,15 +564,16 @@ export default function DynamicElevatorTimeline() {
     );
   }
 
+  const ContainerComponent = isEmbedded ? View : ScrollView;
+
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F5F5F0" />
+    <View style={isEmbedded ? { backgroundColor: 'transparent' } : styles.container}>
+      {!isEmbedded && <StatusBar barStyle="dark-content" backgroundColor="#F5F5F0" />}
 
       {/* Building Container */}
-      <ScrollView
-        style={styles.mainContent}
-        contentContainerStyle={styles.mainContentContainer}
-        keyboardShouldPersistTaps="handled"
+      <ContainerComponent
+        style={[styles.mainContent, isEmbedded && { height: totalBuildingHeight + 250 }]}
+        contentContainerStyle={!isEmbedded && styles.mainContentContainer}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.buildingContainer}>
@@ -555,9 +604,9 @@ export default function DynamicElevatorTimeline() {
                   style={[
                     styles.elevator,
                     {
-                      height: FLOOR_HEIGHT * 0.8,
-                      width: 80,
-                      right: 20,
+                      height: FLOOR_HEIGHT * 0.75,
+                      width: 80 * SCALE_FACTOR,
+                      right: 25 * SCALE_FACTOR,
                       bottom: 0,
                       transform: [{ translateY: Animated.multiply(elevatorY, -1) }],
                     }
@@ -611,6 +660,28 @@ export default function DynamicElevatorTimeline() {
                     </Text>
                   </View>
 
+                  {/* Step-specific Dates */}
+                  {(timelineData.stages[currentFloor]?.startDate || timelineData.stages[currentFloor]?.endDate) && (
+                    <View style={{ flexDirection: 'row', marginTop: 8, gap: 16 }}>
+                      {timelineData.stages[currentFloor]?.startDate && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Ionicons name="play-circle-outline" size={14} color="#388E3C" />
+                          <Text style={{ fontSize: 12, color: '#388E3C', marginLeft: 4 }}>
+                            Start: {new Date(timelineData.stages[currentFloor].startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </Text>
+                        </View>
+                      )}
+                      {timelineData.stages[currentFloor]?.endDate && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Ionicons name="flag-outline" size={14} color="#B8860B" />
+                          <Text style={{ fontSize: 12, color: '#B8860B', marginLeft: 4 }}>
+                            End: {new Date(timelineData.stages[currentFloor].endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
                   {/* Project Info */}
                   {project && (
                     <View style={styles.projectMetaInfo}>
@@ -637,7 +708,7 @@ export default function DynamicElevatorTimeline() {
             </>
           )}
         </View>
-      </ScrollView>
+      </ContainerComponent>
     </View>
   );
 }
@@ -855,5 +926,23 @@ const styles = StyleSheet.create({
   metaText: {
     fontSize: 11,
     color: '#3C5046',
+  },
+  emptyTimelineContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTimelineTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#3C5046',
+    marginTop: 16,
+  },
+  emptyTimelineText: {
+    fontSize: 14,
+    color: '#7F8C8D',
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 20,
   },
 });

@@ -2,19 +2,9 @@ import React from 'react';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
+import { COLORS } from '../../styles/colors';
 
 const { width } = Dimensions.get('window');
-
-// Warm Cream & Amber Theme
-// Premium Beige Theme
-const COLORS = {
-  primary: '#B8860B',      // Dark Golden Rod
-  background: '#F5F5F0',   // Beige
-  backgroundLight: '#F9F9F4',
-  accent: '#E6D7BB',
-  text: '#1A1A1A',
-  textMuted: '#666666',
-};
 
 const WaveHeader = ({
   title,

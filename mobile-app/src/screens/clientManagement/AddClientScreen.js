@@ -15,25 +15,57 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { usersAPI } from '../../utils/api';
+import { COLORS } from '../../styles/colors';
 
-// Light Cream/Yellow Theme
-const COLORS = {
-    primary: '#FFC107',        // Warm Yellow/Gold
-    primaryLight: 'rgba(255, 193, 7, 0.15)',
-    background: '#FDFBF7',     // Warm cream background
-    cardBg: '#FFFFFF',         // White cards
-    cardBorder: 'rgba(0, 0, 0, 0.05)',
-    text: '#1F2937',           // Dark gray text
-    textMuted: '#6B7280',      // Muted text
-    inputBg: '#F9FAFB',        // Light gray input background
-    success: '#10B981',
-    danger: '#EF4444',
-};
+// InputField component moved OUTSIDE to prevent re-creation on each render
+const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default', multiline = false, secureTextEntry = false }) => (
+    <View style={inputFieldStyles.inputContainer}>
+        <Text style={inputFieldStyles.inputLabel}>{label}</Text>
+        <TextInput
+            style={[inputFieldStyles.input, multiline && inputFieldStyles.multilineInput]}
+            value={value}
+            onChangeText={onChangeText}
+            placeholder={placeholder}
+            placeholderTextColor={COLORS.textMuted}
+            keyboardType={keyboardType}
+            multiline={multiline}
+            numberOfLines={multiline ? 4 : 1}
+            secureTextEntry={secureTextEntry}
+        />
+    </View>
+);
+
+const inputFieldStyles = StyleSheet.create({
+    inputContainer: {
+        marginBottom: 16,
+    },
+    inputLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.text,
+        marginBottom: 8,
+    },
+    input: {
+        backgroundColor: COLORS.inputBg,
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        fontSize: 16,
+        color: COLORS.text,
+        borderWidth: 1,
+        borderColor: COLORS.cardBorder,
+    },
+    multilineInput: {
+        height: 100,
+        textAlignVertical: 'top',
+    },
+});
 
 const AddClientScreen = ({ navigation }) => {
     const { user } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
     const [formData, setFormData] = useState({
+        clientId: '',  // Custom client ID (optional - auto-generated if empty)
         firstName: '',
         lastName: '',
         email: '',
@@ -95,6 +127,7 @@ const AddClientScreen = ({ navigation }) => {
             setIsLoading(true);
 
             const clientData = {
+                clientId: formData.clientId.trim() || undefined, // Custom ID or auto-generate
                 firstName: formData.firstName,
                 lastName: formData.lastName,
                 email: formData.email,
@@ -135,22 +168,6 @@ const AddClientScreen = ({ navigation }) => {
         }
     };
 
-    const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default', multiline = false }) => (
-        <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>{label}</Text>
-            <TextInput
-                style={[styles.input, multiline && styles.multilineInput]}
-                value={value}
-                onChangeText={onChangeText}
-                placeholder={placeholder}
-                placeholderTextColor={COLORS.textMuted}
-                keyboardType={keyboardType}
-                multiline={multiline}
-                numberOfLines={multiline ? 4 : 1}
-            />
-        </View>
-    );
-
     return (
         <KeyboardAvoidingView
             style={styles.container}
@@ -178,7 +195,14 @@ const AddClientScreen = ({ navigation }) => {
                     {/* Form */}
                     <View style={styles.formCard}>
                         <View style={styles.formSection}>
-                            <Text style={styles.sectionLabel}>Personal Information</Text>
+                            <Text style={styles.sectionLabel}>Client Information</Text>
+
+                            <InputField
+                                label="Client ID"
+                                value={formData.clientId}
+                                onChangeText={(v) => handleInputChange('clientId', v)}
+                                placeholder="e.g. CLT-001 (auto-generated if empty)"
+                            />
 
                             <View style={styles.row}>
                                 <View style={styles.halfInput}>

@@ -170,28 +170,30 @@ export const DashboardHeader = ({ user, onProfilePress, onNotificationPress, not
   />
 );
 
-export const ProjectsHeader = ({ onAddPress, onSearchPress }) => (
+export const ProjectsHeader = ({ onAddPress, onSearchPress, hideAddButton = false }) => (
   <ModernHeader
     title="Projects"
-    subtitle="Manage your design projects"
+    subtitle={hideAddButton ? "Your active projects" : "Manage your design projects"}
     variant="primary"
     showProfile={false}
     showNotifications={false}
   >
     <View style={styles.projectsActionContainer}>
-      <TouchableOpacity style={styles.modernSearchButton} onPress={onSearchPress}>
+      <TouchableOpacity style={[styles.modernSearchButton, hideAddButton && { flex: 1 }]} onPress={onSearchPress}>
         <View style={styles.buttonIconContainer}>
           <Text style={[styles.modernButtonIcon, { color: '#ffffff' }]}>🔍</Text>
         </View>
         <Text style={[styles.modernButtonText, { color: '#ffffff' }]}>Search</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.modernAddButton} onPress={onAddPress}>
-        <View style={styles.buttonIconContainer}>
-          <Text style={[styles.modernButtonIcon, { color: theme.colors.primary[500] }]}>➕</Text>
-        </View>
-        <Text style={[styles.modernButtonText, { color: theme.colors.primary[500] }]}>New Project</Text>
-      </TouchableOpacity>
+      {!hideAddButton && (
+        <TouchableOpacity style={styles.modernAddButton} onPress={onAddPress}>
+          <View style={styles.buttonIconContainer}>
+            <Text style={[styles.modernButtonIcon, { color: theme.colors.primary[500] }]}>➕</Text>
+          </View>
+          <Text style={[styles.modernButtonText, { color: theme.colors.primary[500] }]}>New Project</Text>
+        </TouchableOpacity>
+      )}
     </View>
   </ModernHeader>
 );

@@ -80,6 +80,7 @@ const projectSchema = new mongoose.Schema({
     firstPayment: Date,
     secondPayment: Date,
     thirdPayment: Date,
+    fourthPayment:Date
   },
   installments: [{
     title: {

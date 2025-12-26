@@ -18,24 +18,9 @@ import { projectsAPI } from '../../utils/api';
 import { useAttendance } from '../../context/AttendanceContext';
 import BottomNavBar from '../../components/common/BottomNavBar';
 import { useFocusEffect } from '@react-navigation/native';
+import { COLORS } from '../../styles/colors';
 
 const { width } = Dimensions.get('window');
-
-// Light Cream/Yellow Theme
-// Premium Beige Theme
-const COLORS = {
-  primary: '#B8860B',        // Dark Golden Rod
-  primaryLight: 'rgba(184, 134, 11, 0.15)',
-  background: '#F5F5F0',     // Beige
-  cardBg: '#FFFFFF',         // White cards
-  cardBorder: 'rgba(184, 134, 11, 0.1)',
-  text: '#1A1A1A',           // Dark text
-  textMuted: '#666666',      // Muted text
-  textDim: '#999999',        // Dim text
-  success: '#388E3C',
-  warning: '#F57C00',
-  danger: '#D32F2F',
-};
 
 const ProjectListScreen = ({ navigation, route }) => {
   const { clientId } = route.params || {};

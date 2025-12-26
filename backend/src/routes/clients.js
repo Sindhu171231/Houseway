@@ -110,7 +110,7 @@ router.get('/:id', authenticate, isOwnerOrEmployee, async (req, res) => {
 
     // Get client's projects summary
     const projects = await Project.find({ client: id })
-      .select('title status progress createdAt updatedAt budget')
+      .select('projectId title status progress createdAt updatedAt budget')
       .sort({ createdAt: -1 });
 
     const projectStats = {
@@ -859,6 +859,238 @@ router.get('/dashboard/stats', authenticate, isOwnerOrEmployee, async (req, res)
     res.status(500).json({
       success: false,
       message: 'Failed to get dashboard statistics',
+      error: error.message,
+    });
+  }
+});
+
+// ===============================================
+// CLIENT SELF-SERVICE ENDPOINTS
+// These endpoints allow clients to access their own data
+// ===============================================
+
+/**
+ * @route   GET /api/clients/me/projects
+ * @desc    Get logged-in client's assigned projects
+ * @access  Private (Client only)
+ */
+router.get('/me/projects', authenticate, async (req, res) => {
+  try {
+    // Verify user is a client
+    if (req.user.role !== 'client') {
+      return res.status(403).json({
+        success: false,
+        message: 'This endpoint is only accessible to clients',
+      });
+    }
+
+    const {
+      page = 1,
+      limit = 50,
+      status,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    let query = { client: req.user._id };
+
+    if (status) {
+      query.status = status;
+    }
+
+    const sortConfig = {};
+    sortConfig[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    const projects = await Project.find(query)
+      .populate('assignedEmployees', 'firstName lastName email')
+      .populate('assignedVendors', 'firstName lastName email vendorDetails.companyName')
+      .sort(sortConfig)
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await Project.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: {
+        projects,
+        pagination: {
+          current: parseInt(page),
+          pages: Math.ceil(total / limit),
+          total,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Get client projects error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get projects',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @route   GET /api/clients/me/projects/:projectId
+ * @desc    Get full project details for the logged-in client
+ * @access  Private (Client only)
+ */
+router.get('/me/projects/:projectId', authenticate, async (req, res) => {
+  try {
+    if (req.user.role !== 'client') {
+      return res.status(403).json({
+        success: false,
+        message: 'This endpoint is only accessible to clients',
+      });
+    }
+
+    const { projectId } = req.params;
+
+    const project = await Project.findById(projectId)
+      .populate('client', 'firstName lastName email phone')
+      .populate('assignedEmployees', 'firstName lastName email employeeDetails')
+      .populate('assignedVendors', 'firstName lastName email vendorDetails')
+      .populate('createdBy', 'firstName lastName');
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found',
+      });
+    }
+
+    // Verify project belongs to the client
+    if (project.client._id.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. This project does not belong to you.',
+      });
+    }
+
+    // Get related data
+    const [media, invoices, timelineEvents] = await Promise.all([
+      ClientMedia.getProjectMedia(projectId, { limit: 50 }),
+      ClientInvoice.find({ projectId }).sort({ createdAt: -1 }),
+      ClientTimelineEvent.getProjectTimeline(projectId, { limit: 20 })
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        project,
+        media,
+        invoices,
+        timelineEvents,
+        paymentSchedule: project.paymentSchedule || [],
+        documents: project.documents || [],
+      },
+    });
+  } catch (error) {
+    console.error('Get project details error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get project details',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @route   GET /api/clients/me/projects/:projectId/media
+ * @desc    Get project media for the logged-in client
+ * @access  Private (Client only)
+ */
+router.get('/me/projects/:projectId/media', authenticate, async (req, res) => {
+  try {
+    if (req.user.role !== 'client') {
+      return res.status(403).json({
+        success: false,
+        message: 'This endpoint is only accessible to clients',
+      });
+    }
+
+    const { projectId } = req.params;
+    const { page = 1, limit = 50, type, category } = req.query;
+
+    // Verify project belongs to client
+    const project = await Project.findById(projectId);
+    if (!project || project.client.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
+
+    const options = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      type,
+      category,
+      isPublic: true // Clients only see public media
+    };
+
+    const media = await ClientMedia.getProjectMedia(projectId, options);
+    const total = await ClientMedia.countDocuments({ projectId, isPublic: true });
+
+    res.json({
+      success: true,
+      data: {
+        media,
+        pagination: {
+          current: parseInt(page),
+          pages: Math.ceil(total / limit),
+          total,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Get project media error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get project media',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @route   GET /api/clients/me/projects/:projectId/documents
+ * @desc    Get project documents for the logged-in client
+ * @access  Private (Client only)
+ */
+router.get('/me/projects/:projectId/documents', authenticate, async (req, res) => {
+  try {
+    if (req.user.role !== 'client') {
+      return res.status(403).json({
+        success: false,
+        message: 'This endpoint is only accessible to clients',
+      });
+    }
+
+    const { projectId } = req.params;
+
+    // Verify project belongs to client
+    const project = await Project.findById(projectId);
+    if (!project || project.client.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
+
+    // Return documents from the project
+    res.json({
+      success: true,
+      data: {
+        documents: project.documents || [],
+      },
+    });
+  } catch (error) {
+    console.error('Get project documents error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get project documents',
       error: error.message,
     });
   }

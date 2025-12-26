@@ -236,4 +236,170 @@ router.delete('/remove-profile-photo', authenticate, async (req, res) => {
   }
 });
 
+/**
+ * ============================
+ *  PASSWORD RESET VIA EMAIL OTP
+ * ============================
+ */
+
+const bcrypt = require('bcryptjs');
+const { sendPasswordOTP, generateOTP } = require('../utils/emailService');
+
+/**
+ * @route   POST /api/auth/request-password-otp
+ * @desc    Send OTP to user email for password reset
+ * @access  Public (email required)
+ */
+router.post('/request-password-otp', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const User = require('../models/User');
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      // Don't reveal if email exists for security
+      return res.json({ success: true, message: 'If this email exists, an OTP has been sent.' });
+    }
+
+    // Rate limiting: max 3 attempts per 15 minutes
+    const now = new Date();
+    if (user.passwordResetExpiry && user.passwordResetExpiry > now && user.passwordResetAttempts >= 3) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many OTP requests. Please try again in 15 minutes.'
+      });
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+    const otpHash = await bcrypt.hash(otp, 10);
+
+    // Save hashed OTP with 10 minute expiry
+    user.passwordResetOTP = otpHash;
+    user.passwordResetExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    user.passwordResetAttempts = (user.passwordResetAttempts || 0) + 1;
+    await user.save();
+
+    // Send email
+    try {
+      await sendPasswordOTP(email, otp, user.firstName);
+    } catch (emailError) {
+      console.error('[Auth] Email send error:', emailError);
+      return res.status(500).json({ success: false, message: 'Failed to send OTP email. Please try again.' });
+    }
+
+    console.log('✅ [Auth] OTP sent to:', email);
+    res.json({ success: true, message: 'OTP sent to your email.' });
+  } catch (error) {
+    console.error('Request OTP error:', error);
+    res.status(500).json({ success: false, message: 'Failed to process request', error: error.message });
+  }
+});
+
+/**
+ * @route   POST /api/auth/verify-password-otp
+ * @desc    Verify OTP for password reset
+ * @access  Public
+ */
+router.post('/verify-password-otp', async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const User = require('../models/User');
+
+    if (!email || !otp) {
+      return res.status(400).json({ success: false, message: 'Email and OTP are required' });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user || !user.passwordResetOTP) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
+    }
+
+    // Check expiry
+    if (!user.passwordResetExpiry || new Date() > user.passwordResetExpiry) {
+      user.passwordResetOTP = null;
+      user.passwordResetExpiry = null;
+      await user.save();
+      return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new one.' });
+    }
+
+    // Verify OTP
+    const isValid = await bcrypt.compare(otp, user.passwordResetOTP);
+    if (!isValid) {
+      return res.status(400).json({ success: false, message: 'Invalid OTP' });
+    }
+
+    // OTP verified - generate temp token for password reset
+    const resetToken = require('crypto').randomBytes(32).toString('hex');
+    const tokenHash = await bcrypt.hash(resetToken, 10);
+    user.passwordResetOTP = tokenHash; // Reuse field for temp token
+    user.passwordResetExpiry = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes to set new password
+    await user.save();
+
+    console.log('✅ [Auth] OTP verified for:', email);
+    res.json({ success: true, message: 'OTP verified', resetToken });
+  } catch (error) {
+    console.error('Verify OTP error:', error);
+    res.status(500).json({ success: false, message: 'Verification failed', error: error.message });
+  }
+});
+
+/**
+ * @route   POST /api/auth/reset-password-with-otp
+ * @desc    Set new password after OTP verification
+ * @access  Public (requires resetToken from verify step)
+ */
+router.post('/reset-password-with-otp', async (req, res) => {
+  try {
+    const { email, resetToken, newPassword } = req.body;
+    const User = require('../models/User');
+
+    if (!email || !resetToken || !newPassword) {
+      return res.status(400).json({ success: false, message: 'All fields are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user || !user.passwordResetOTP) {
+      return res.status(400).json({ success: false, message: 'Invalid reset request' });
+    }
+
+    // Check expiry
+    if (!user.passwordResetExpiry || new Date() > user.passwordResetExpiry) {
+      user.passwordResetOTP = null;
+      user.passwordResetExpiry = null;
+      user.passwordResetAttempts = 0;
+      await user.save();
+      return res.status(400).json({ success: false, message: 'Reset session expired. Please start over.' });
+    }
+
+    // Verify token
+    const isValid = await bcrypt.compare(resetToken, user.passwordResetOTP);
+    if (!isValid) {
+      return res.status(400).json({ success: false, message: 'Invalid reset token' });
+    }
+
+    // Update password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    user.passwordResetOTP = null;
+    user.passwordResetExpiry = null;
+    user.passwordResetAttempts = 0;
+    await user.save();
+
+    console.log('✅ [Auth] Password reset successful for:', email);
+    res.json({ success: true, message: 'Password changed successfully. Please login with your new password.' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ success: false, message: 'Failed to reset password', error: error.message });
+  }
+});
+
 module.exports = router;

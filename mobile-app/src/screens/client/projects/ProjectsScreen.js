@@ -9,14 +9,27 @@ import {
   ActivityIndicator,
   Alert,
   TextInput,
+  Platform,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../../context/AuthContext';
 import { projectsAPI } from '../../../utils/api';
-// Removed problematic animation components
 import ModernCard, { ProjectCard } from '../../../components/ModernCard';
-import ModernHeader, { ProjectsHeader } from '../../../components/ModernHeader';
-import SearchAndFilter, { QuickFilters } from '../../../components/SearchAndFilter';
 import theme from '../../../styles/theme';
+
+// Theme colors
+const COLORS = {
+  primary: '#F5B041',
+  primaryDark: '#D4941F',
+  primaryLight: 'rgba(245, 176, 65, 0.15)',
+  background: '#FFFBF5',
+  cardBg: '#FFFFFF',
+  cardBorder: 'rgba(245, 176, 65, 0.2)',
+  text: '#2C2C2C',
+  textMuted: '#6B6B6B',
+  success: '#4CAF50',
+  warning: '#FF9800',
+};
 
 const ProjectsScreen = ({ navigation }) => {
   const { user } = useAuth();
@@ -25,15 +38,7 @@ const ProjectsScreen = ({ navigation }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState('all');
-
-  const filters = [
-    { key: 'all', label: 'All Projects' },
-    { key: 'planning', label: 'Planning' },
-    { key: 'in-progress', label: 'In Progress' },
-    { key: 'completed', label: 'Completed' },
-    { key: 'on-hold', label: 'On Hold' },
-  ];
+  const [selectedTab, setSelectedTab] = useState('active'); // 'active' or 'past'
 
   useEffect(() => {
     loadProjects();
@@ -41,22 +46,15 @@ const ProjectsScreen = ({ navigation }) => {
 
   useEffect(() => {
     filterProjects();
-  }, [projects, searchQuery, selectedFilter]);
+  }, [projects, searchQuery, selectedTab]);
 
   const loadProjects = async () => {
     try {
       setIsLoading(true);
 
-      let params = { limit: 50 };
-
-      // Filter based on user role
-      if (user.role === 'client') {
-        params.client = user._id;
-      } else if (user.role === 'employee') {
-        params.assignedTo = user._id;
-      }
-
-      const response = await projectsAPI.getProjects(params);
+      // Use projectsAPI.getProjects - backend automatically filters by role
+      // Clients see their projects, employees see assigned projects, owner sees all
+      const response = await projectsAPI.getProjects({ limit: 50 });
 
       if (response.success) {
         setProjects(response.data.projects || []);
@@ -75,19 +73,47 @@ const ProjectsScreen = ({ navigation }) => {
   const filterProjects = () => {
     let filtered = projects;
 
-    // Apply status filter
-    if (selectedFilter !== 'all') {
-      filtered = filtered.filter(project => project.status === selectedFilter);
+    // Apply tab filter - Active vs Past
+    if (selectedTab === 'active') {
+      // Active: in-progress, planning
+      filtered = filtered.filter(project =>
+        project.status === 'in-progress' || project.status === 'planning'
+      );
+    } else {
+      // Past: completed, on-hold, cancelled
+      filtered = filtered.filter(project =>
+        project.status === 'completed' || project.status === 'on-hold' || project.status === 'cancelled'
+      );
     }
 
-    // Apply search filter
+    // Apply search filter - search by project name or employee name
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(project =>
-        project.title.toLowerCase().includes(query) ||
-        project.description.toLowerCase().includes(query) ||
-        (project.location?.city && project.location?.city.toLowerCase().includes(query))
-      );
+      filtered = filtered.filter(project => {
+        // Search by project title
+        const titleMatch = project.title?.toLowerCase().includes(query);
+
+        // Search by description
+        const descMatch = project.description?.toLowerCase().includes(query);
+
+        // Search by assigned employee names
+        const employeeMatch = project.assignedEmployees?.some(emp => {
+          const fullName = `${emp.firstName || ''} ${emp.lastName || ''}`.toLowerCase();
+          return fullName.includes(query) || emp.email?.toLowerCase().includes(query);
+        });
+
+        // Search by team/assigned to
+        const teamMatch = project.team?.some(member => {
+          const memberName = `${member.firstName || ''} ${member.lastName || ''}`.toLowerCase();
+          return memberName.includes(query);
+        });
+
+        // Search by manager name
+        const managerMatch = project.projectManager?.firstName?.toLowerCase().includes(query) ||
+          project.projectManager?.lastName?.toLowerCase().includes(query);
+
+        return titleMatch || descMatch || employeeMatch || teamMatch || managerMatch;
+      });
     }
 
     setFilteredProjects(filtered);
@@ -98,171 +124,181 @@ const ProjectsScreen = ({ navigation }) => {
     loadProjects();
   };
 
+  // Get counts for tabs
+  const activeCount = projects.filter(p => p.status === 'in-progress' || p.status === 'planning').length;
+  const pastCount = projects.filter(p => p.status === 'completed' || p.status === 'on-hold' || p.status === 'cancelled').length;
+
   const getStatusColor = (status) => {
-    return theme.statusColors.project[status] || theme.statusColors.project.planning;
+    switch (status) {
+      case 'completed': return COLORS.success;
+      case 'in-progress': return COLORS.primary;
+      case 'planning': return COLORS.warning;
+      default: return COLORS.textMuted;
+    }
   };
 
-  const ProjectCard = ({ project }) => (
-    <ModernCard
-      variant="outlined"
-      style={{...styles.projectCard, borderTopColor: getStatusColor(project.status), borderTopWidth: 4}}
+  const renderProjectCard = ({ item: project }) => (
+    <TouchableOpacity
+      style={styles.projectCard}
+      activeOpacity={0.7}
       onPress={() => navigation.navigate('ProjectDetails', { projectId: project._id })}
     >
+      <View style={[styles.statusIndicator, { backgroundColor: getStatusColor(project.status) }]} />
+
       <View style={styles.cardContent}>
-        <View style={styles.projectIdHeader}>
-          <Text style={styles.projectIdText}>
-            Project ID: {project.projectId || project._id.slice(-8).toUpperCase()}
-          </Text>
-        </View>
         <View style={styles.cardHeader}>
-          <Text style={styles.projectTitle} numberOfLines={2}>
-            {project.title}
-          </Text>
-          <View style={{...styles.statusBadge, backgroundColor: 'rgba(255,255,255,0.2)'}}>
-            <Text style={styles.statusText}>
-              {project.status.replace('-', ' ').toUpperCase()}
+          <Text style={styles.projectTitle} numberOfLines={1}>{project.title}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(project.status) + '20' }]}>
+            <Text style={[styles.statusText, { color: getStatusColor(project.status) }]}>
+              {project.status === 'in-progress' ? 'ACTIVE' : project.status.toUpperCase()}
             </Text>
           </View>
         </View>
 
-        <Text style={styles.projectDescription} numberOfLines={3}>
-          {project.description}
+        <Text style={styles.projectDescription} numberOfLines={2}>
+          {project.description || 'No description available'}
         </Text>
 
-        <View style={styles.cardFooter}>
-          <View style={styles.progressSection}>
-            <View style={styles.simpleProgressContainer}>
-              <View style={styles.progressBar}>
-                <View
-                  style={{
-                    ...styles.progressFill,
-                    width: `${project.progress?.percentage || 0}%`,
-                    backgroundColor: getStatusColor(project.status)
-                  }}
-                />
-              </View>
-              <Text style={styles.progressPercentage}>
-                {project.progress?.percentage || 0}%
-              </Text>
-            </View>
-            <View style={styles.progressInfo}>
-              <Text style={styles.progressText}>
-                {project.progress?.percentage || 0}% Complete
-              </Text>
-              <Text style={styles.locationText}>
-                {project.location?.city || 'Location not set'}
-              </Text>
-            </View>
+        {/* Progress Bar */}
+        <View style={styles.progressContainer}>
+          <View style={styles.progressBar}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  width: `${project.progress?.percentage || 0}%`,
+                  backgroundColor: getStatusColor(project.status)
+                }
+              ]}
+            />
           </View>
+          <Text style={styles.progressText}>{project.progress?.percentage || 0}%</Text>
+        </View>
 
-          <View style={styles.budgetSection}>
-            <Text style={styles.budgetLabel}>Budget</Text>
-            <Text style={styles.budgetAmount}>
-              ${(project.budget?.estimated || 0).toLocaleString()}
-            </Text>
+        {/* Bottom Info */}
+        <View style={styles.cardFooter}>
+          <View style={styles.infoItem}>
+            <Ionicons name="location-outline" size={14} color={COLORS.textMuted} />
+            <Text style={styles.infoText}>{project.location?.city || 'N/A'}</Text>
+          </View>
+          <View style={styles.infoItem}>
+            <Ionicons name="cash-outline" size={14} color={COLORS.textMuted} />
+            <Text style={styles.infoText}>₹{(project.budget?.estimated || 0).toLocaleString()}</Text>
           </View>
         </View>
+
+        {/* Assigned Team Preview */}
+        {project.assignedEmployees && project.assignedEmployees.length > 0 && (
+          <View style={styles.teamPreview}>
+            <Ionicons name="people-outline" size={14} color={COLORS.textMuted} />
+            <Text style={styles.teamText} numberOfLines={1}>
+              {project.assignedEmployees.slice(0, 2).map(e => e.firstName).join(', ')}
+              {project.assignedEmployees.length > 2 ? ` +${project.assignedEmployees.length - 2}` : ''}
+            </Text>
+          </View>
+        )}
       </View>
-    </ModernCard>
-  );
 
-  const FilterButton = ({ filter }) => (
-    <TouchableOpacity
-      style={{
-        ...styles.filterButton,
-        ...(selectedFilter === filter.key && styles.activeFilterButton)
-      }}
-      onPress={() => setSelectedFilter(filter.key)}
-    >
-      <Text style={{
-        ...styles.filterButtonText,
-        ...(selectedFilter === filter.key && styles.activeFilterButtonText)
-      }}>
-        {filter.label}
-      </Text>
+      <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} style={styles.chevron} />
     </TouchableOpacity>
-  );
-
-  const renderEmptyState = () => (
-    <View style={styles.emptyState}>
-      <Text style={styles.emptyStateIcon}>📋</Text>
-      <Text style={styles.emptyStateTitle}>No Projects Found</Text>
-      <Text style={styles.emptyStateDescription}>
-        {searchQuery ? 'Try adjusting your search criteria' : 'No projects match the selected filter'}
-      </Text>
-    </View>
   );
 
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2196F3" />
+        <ActivityIndicator size="large" color={COLORS.primary} />
         <Text style={styles.loadingText}>Loading projects...</Text>
       </View>
     );
   }
 
-  const quickFilters = [
-    { key: 'all', label: 'All', count: projects.length, icon: '📋' },
-    { key: 'planning', label: 'Planning', count: projects.filter(p => p.status === 'planning').length, icon: '📝' },
-    { key: 'in-progress', label: 'Active', count: projects.filter(p => p.status === 'in-progress').length, icon: '🔄' },
-    { key: 'completed', label: 'Done', count: projects.filter(p => p.status === 'completed').length, icon: '✅' },
-    { key: 'on-hold', label: 'On Hold', count: projects.filter(p => p.status === 'on-hold').length, icon: '⏸️' },
-  ];
-
   return (
     <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={22} color={COLORS.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>My Projects</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={20} color={COLORS.textMuted} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search by project or team member..."
+          placeholderTextColor={COLORS.textMuted}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Tab Buttons */}
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tabButton, selectedTab === 'active' && styles.tabButtonActive]}
+          onPress={() => setSelectedTab('active')}
+        >
+          <Ionicons
+            name="play-circle"
+            size={18}
+            color={selectedTab === 'active' ? COLORS.primary : COLORS.textMuted}
+          />
+          <Text style={[styles.tabText, selectedTab === 'active' && styles.tabTextActive]}>
+            Active ({activeCount})
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabButton, selectedTab === 'past' && styles.tabButtonActive]}
+          onPress={() => setSelectedTab('past')}
+        >
+          <Ionicons
+            name="checkmark-done-circle"
+            size={18}
+            color={selectedTab === 'past' ? COLORS.primary : COLORS.textMuted}
+          />
+          <Text style={[styles.tabText, selectedTab === 'past' && styles.tabTextActive]}>
+            Past ({pastCount})
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Projects List */}
       <FlatList
         data={filteredProjects}
         keyExtractor={(item) => item._id}
-        ListHeaderComponent={
-          <>
-            {/* Modern Header */}
-            <ProjectsHeader
-              onAddPress={() => navigation.navigate('CreateProject')}
-              onSearchPress={() => {/* Handle search */}}
-            />
-
-            {/* Search and Filters */}
-            <SearchAndFilter
-              searchValue={searchQuery}
-              onSearchChange={setSearchQuery}
-              filters={quickFilters}
-              selectedFilter={selectedFilter}
-              onFilterChange={setSelectedFilter}
-              placeholder="Search projects..."
-            />
-          </>
-        }
-        renderItem={({ item }) => (
-          <ProjectCard
-            project={item}
-            onPress={() => navigation.navigate('ProjectDetails', { projectId: item._id })}
-          />
-        )}
+        renderItem={renderProjectCard}
         contentContainerStyle={styles.projectsList}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
         }
         ListEmptyComponent={() => (
-          <ModernCard variant="outlined" style={styles.emptyCard}>
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyIcon}>🏗️</Text>
-              <Text style={styles.emptyTitle}>No Projects Found</Text>
-              <Text style={styles.emptyDescription}>
-                {searchQuery ? 'Try adjusting your search criteria' : 'Create your first project to get started'}
-              </Text>
-              {(user.role === 'owner' || user.role === 'employee') && (
-                <TouchableOpacity
-                  style={styles.emptyButton}
-                  onPress={() => navigation.navigate('CreateProject')}
-                >
-                  <Text style={styles.emptyButtonText}>Create Project</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </ModernCard>
+          <View style={styles.emptyState}>
+            <Ionicons
+              name={selectedTab === 'active' ? 'construct-outline' : 'archive-outline'}
+              size={64}
+              color={COLORS.textMuted}
+            />
+            <Text style={styles.emptyTitle}>
+              {selectedTab === 'active' ? 'No Active Projects' : 'No Past Projects'}
+            </Text>
+            <Text style={styles.emptyDescription}>
+              {searchQuery
+                ? 'Try adjusting your search criteria'
+                : selectedTab === 'active'
+                  ? 'You don\'t have any active projects at the moment'
+                  : 'Your completed projects will appear here'
+              }
+            </Text>
+          </View>
         )}
         showsVerticalScrollIndicator={false}
       />
@@ -273,78 +309,240 @@ const ProjectsScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background.primary,
+    backgroundColor: COLORS.background,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: COLORS.textMuted,
+  },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: Platform.OS === 'ios' ? 60 : 50,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    backgroundColor: COLORS.background,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: COLORS.cardBg,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+
+  // Search
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.cardBg,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    gap: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: COLORS.text,
+    paddingVertical: 0,
+  },
+
+  // Tabs
+  tabContainer: {
+    flexDirection: 'row',
+    marginHorizontal: 20,
+    marginBottom: 16,
+    gap: 12,
+  },
+  tabButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: COLORS.cardBg,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    gap: 8,
+  },
+  tabButtonActive: {
+    backgroundColor: COLORS.primaryLight,
+    borderColor: COLORS.primary,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+  },
+  tabTextActive: {
+    color: COLORS.primaryDark,
+  },
+
+  // Projects List
   projectsList: {
     paddingHorizontal: 20,
-    paddingTop: 16,
     paddingBottom: 40,
   },
 
-  // Empty State
-  emptyCard: {
-    marginVertical: 40,
-    marginHorizontal: 20,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: theme.colors.text.primary,
-    marginBottom: 8,
-  },
-  emptyDescription: {
-    fontSize: 16,
-    color: theme.colors.text.secondary,
-    textAlign: 'center',
-    marginBottom: 24,
-    paddingHorizontal: 20,
-  },
-  emptyButton: {
-    backgroundColor: theme.colors.primary[500],
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 24,
-  },
-  emptyButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  // Simple Progress Bar Styles
-  progressSection: {
+  // Project Card
+  projectCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    overflow: 'hidden',
   },
-  simpleProgressContainer: {
-    width: 50,
-    height: 50,
-    justifyContent: 'center',
+  statusIndicator: {
+    width: 4,
+    height: '100%',
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+  },
+  cardContent: {
+    flex: 1,
+    padding: 16,
+    paddingLeft: 20,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 8,
+  },
+  projectTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginRight: 10,
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  projectDescription: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+
+  // Progress
+  progressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 10,
   },
   progressBar: {
-    width: 40,
+    flex: 1,
     height: 6,
-    backgroundColor: theme.colors.background.tertiary,
+    backgroundColor: '#E8E8E8',
     borderRadius: 3,
-    marginBottom: 4,
+    overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
     borderRadius: 3,
   },
-  progressPercentage: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: theme.colors.text.primary,
+  progressText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.text,
+    minWidth: 35,
+    textAlign: 'right',
+  },
+
+  // Card Footer
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 20,
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  infoText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+
+  // Team Preview
+  teamPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.cardBorder,
+    gap: 6,
+  },
+  teamText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    flex: 1,
+  },
+
+  chevron: {
+    marginRight: 12,
+  },
+
+  // Empty State
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyDescription: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
 

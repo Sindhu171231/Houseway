@@ -100,7 +100,7 @@ const CreateProjectScreen = () => {
     assignedEmployee: '',
     budget: '',
     startDate: '',
-    deadline: '',
+    endDate: '',
     address: '',
     city: '',
     state: '',
@@ -185,6 +185,7 @@ const CreateProjectScreen = () => {
         budget: parseFloat(projectForm.budget) || 0,  // Send as number, not object
         timeline: {
           startDate: projectForm.startDate ? new Date(projectForm.startDate).toISOString() : undefined,
+          expectedEndDate: projectForm.endDate ? new Date(projectForm.endDate).toISOString() : undefined,
         },
         location: {
           address: projectForm.address,
@@ -449,6 +450,14 @@ const CreateProjectScreen = () => {
               type="date"
               value={projectForm.startDate}
               onChange={e => handleProjectChange('startDate', e.target.value)}
+            />
+
+            <label style={styles.label}>Expected End Date</label>
+            <input
+              style={styles.input}
+              type="date"
+              value={projectForm.endDate}
+              onChange={e => handleProjectChange('endDate', e.target.value)}
             />
 
             <label style={styles.label}>Assign Team Member</label>

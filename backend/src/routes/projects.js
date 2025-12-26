@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { validationResult } = require('express-validator');
 const Project = require('../models/Project');
 const User = require('../models/User');
@@ -9,6 +10,22 @@ const ClientInvoice = require('../models/ClientInvoice');
 const { authenticate, authorize, isOwner, isOwnerOrEmployee } = require('../middleware/auth');
 const { validateProject } = require('../middleware/validation');
 const { uploadMultiple, getFileUrl } = require('../middleware/upload');
+const { uploadToGCS } = require('../utils/gcs');
+
+// Memory storage for GCS media uploads
+const memoryStorage = multer.memoryStorage();
+const uploadMediaToMemory = multer({
+  storage: memoryStorage,
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
+  fileFilter: (req, file, cb) => {
+    const allowed = [
+      'image/jpeg', 'image/png', 'image/jpg', 'image/gif',
+      'video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo', 'video/x-ms-wmv',
+    ];
+    if (allowed.includes(file.mimetype)) return cb(null, true);
+    cb(new Error('Invalid file type. Allowed: Images and Videos'));
+  }
+}).array('images', 10);
 
 /**
  * @route   GET /api/projects
@@ -27,8 +44,22 @@ router.get('/', authenticate, async (req, res) => {
         // Owner can see all projects
         break;
       case 'employee':
-        // Employee can see assigned projects
-        query.assignedEmployees = req.user._id;
+        // Check if employee is vendorTeam - they are assigned via assignedVendors
+        if (req.user.subRole === 'vendorTeam') {
+          query.assignedVendors = req.user._id;
+        } else if (req.user.subRole === 'designTeam') {
+          // DesignTeam can see projects they created OR are assigned to
+          query.$or = [
+            { createdBy: req.user._id },
+            { assignedEmployees: req.user._id }
+          ];
+        } else {
+          // Other employees (executionTeam) can see assigned projects OR created projects
+          query.$or = [
+            { assignedEmployees: req.user._id },
+            { createdBy: req.user._id }
+          ];
+        }
         break;
       case 'vendor':
         // Vendor can see projects they're assigned to
@@ -45,17 +76,34 @@ router.get('/', authenticate, async (req, res) => {
         });
     }
 
+    // Store role-based $or conditions if any
+    const roleOrConditions = query.$or;
+    delete query.$or;
+
     // Filter by status if provided
     if (status) {
       query.status = status;
     }
 
-    // Search functionality
+    // Search functionality - combine with role filter using $and if needed
     if (search) {
-      query.$or = [
+      const searchConditions = [
         { title: { $regex: search, $options: 'i' } },
         { description: { $regex: search, $options: 'i' } },
       ];
+
+      if (roleOrConditions) {
+        // If role filter has $or, combine with $and
+        query.$and = [
+          { $or: roleOrConditions },
+          { $or: searchConditions }
+        ];
+      } else {
+        query.$or = searchConditions;
+      }
+    } else if (roleOrConditions) {
+      // Restore role-based $or if no search
+      query.$or = roleOrConditions;
     }
 
     // Sort configuration
@@ -123,7 +171,9 @@ router.get('/:id', authenticate, async (req, res) => {
     const hasAccess =
       req.user.role === 'owner' ||
       (req.user.role === 'client' && project.client._id.toString() === req.user._id.toString()) ||
+      (req.user.role === 'employee' && project.createdBy?._id?.toString() === req.user._id.toString()) ||
       (req.user.role === 'employee' && project.assignedEmployees.some(emp => emp._id.toString() === req.user._id.toString())) ||
+      (req.user.role === 'employee' && req.user.subRole === 'vendorTeam' && project.assignedVendors.some(vendor => vendor._id.toString() === req.user._id.toString())) ||
       (req.user.role === 'vendor' && project.assignedVendors.some(vendor => vendor._id.toString() === req.user._id.toString()));
 
     if (!hasAccess) {
@@ -338,9 +388,9 @@ router.delete('/:id', authenticate, isOwner, async (req, res) => {
 /**
  * @route   PUT /api/projects/:id/assign-employee
  * @desc    Assign employee to project
- * @access  Private (Owner only)
+ * @access  Private (Owner or Employee - Designer can assign Executive)
  */
-router.put('/:id/assign-employee', authenticate, isOwner, async (req, res) => {
+router.put('/:id/assign-employee', authenticate, authorize('owner', 'employee'), async (req, res) => {
   try {
     const { id } = req.params;
     const { employeeId } = req.body;
@@ -401,9 +451,9 @@ router.put('/:id/assign-employee', authenticate, isOwner, async (req, res) => {
 /**
  * @route   PUT /api/projects/:id/assign-vendor
  * @desc    Assign vendor to project
- * @access  Private (Owner only)
+ * @access  Private (Owner or Employee - Executive can assign Vendors)
  */
-router.put('/:id/assign-vendor', authenticate, isOwner, async (req, res) => {
+router.put('/:id/assign-vendor', authenticate, authorize('owner', 'employee'), async (req, res) => {
   try {
     const { id } = req.params;
     const { vendorId } = req.body;
@@ -415,9 +465,12 @@ router.put('/:id/assign-vendor', authenticate, isOwner, async (req, res) => {
       });
     }
 
-    // Verify vendor exists and has vendor role
+    // Verify vendor exists and is either a vendor role or vendorTeam employee
     const vendor = await User.findById(vendorId);
-    if (!vendor || vendor.role !== 'vendor' || !vendor.isActive) {
+    const isVendor = vendor && vendor.role === 'vendor' && vendor.isActive;
+    const isVendorTeamEmployee = vendor && vendor.role === 'employee' && vendor.subRole === 'vendorTeam' && vendor.isActive;
+
+    if (!isVendor && !isVendorTeamEmployee) {
       return res.status(400).json({
         success: false,
         message: 'Invalid vendor ID or vendor is not active',
@@ -456,6 +509,108 @@ router.put('/:id/assign-vendor', authenticate, isOwner, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to assign vendor',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/projects/:id/unassign-employee/:employeeId
+ * @desc    Remove employee from project
+ * @access  Private (Owner or Employee - Designer can remove Executive)
+ */
+router.delete('/:id/unassign-employee/:employeeId', authenticate, authorize('owner', 'employee'), async (req, res) => {
+  try {
+    const { id, employeeId } = req.params;
+
+    const project = await Project.findById(id);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found',
+      });
+    }
+
+    // Check if employee is assigned
+    const employeeIndex = project.assignedEmployees.findIndex(
+      emp => emp.toString() === employeeId
+    );
+
+    if (employeeIndex === -1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Employee is not assigned to this project',
+      });
+    }
+
+    project.assignedEmployees.splice(employeeIndex, 1);
+    await project.save();
+    await project.populate('assignedEmployees', 'firstName lastName email');
+
+    const io = req.app.get('io');
+    if (io) io.emit('projectUpdated', { operation: 'employeeUnassigned', project });
+
+    res.json({
+      success: true,
+      message: 'Employee removed successfully',
+      data: { project },
+    });
+  } catch (error) {
+    console.error('Unassign employee error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to remove employee',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/projects/:id/unassign-vendor/:vendorId
+ * @desc    Remove vendor from project
+ * @access  Private (Owner or Employee - Executive can remove Vendor)
+ */
+router.delete('/:id/unassign-vendor/:vendorId', authenticate, authorize('owner', 'employee'), async (req, res) => {
+  try {
+    const { id, vendorId } = req.params;
+
+    const project = await Project.findById(id);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found',
+      });
+    }
+
+    // Check if vendor is assigned
+    const vendorIndex = project.assignedVendors.findIndex(
+      vendor => vendor.toString() === vendorId
+    );
+
+    if (vendorIndex === -1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vendor is not assigned to this project',
+      });
+    }
+
+    project.assignedVendors.splice(vendorIndex, 1);
+    await project.save();
+    await project.populate('assignedVendors', 'firstName lastName email vendorDetails.companyName');
+
+    const io = req.app.get('io');
+    if (io) io.emit('projectUpdated', { operation: 'vendorUnassigned', project });
+
+    res.json({
+      success: true,
+      message: 'Vendor removed successfully',
+      data: { project },
+    });
+  } catch (error) {
+    console.error('Unassign vendor error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to remove vendor',
       error: error.message,
     });
   }
@@ -733,7 +888,7 @@ router.get('/client/:clientId', authenticate, async (req, res) => {
 router.post('/:id/timeline', authenticate, isOwnerOrEmployee, async (req, res) => {
   try {
     const { id } = req.params;
-    const { eventType, title, description, attachments = [], visibility = 'public' } = req.body;
+    const { eventType, title, description, attachments = [], visibility = 'public', status = 'in-progress', startDate, endDate } = req.body;
 
     // Validate required fields
     if (!eventType || !title || !description) {
@@ -770,6 +925,9 @@ router.post('/:id/timeline', authenticate, isOwnerOrEmployee, async (req, res) =
       description,
       attachments,
       visibility,
+      status,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
       createdBy: req.user._id,
     });
 
@@ -870,10 +1028,18 @@ router.get('/:id/timeline', authenticate, async (req, res) => {
 
 /**
  * @route   POST /api/projects/:id/media
- * @desc    Upload project media
+ * @desc    Upload project media to GCS
  * @access  Private (Owner, Employee)
  */
-router.post('/:id/media', authenticate, isOwnerOrEmployee, uploadMultiple('project-media', 10), async (req, res) => {
+router.post('/:id/media', authenticate, isOwnerOrEmployee, (req, res, next) => {
+  uploadMediaToMemory(req, res, (err) => {
+    if (err) {
+      console.error('[Projects] Media upload multer error:', err);
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     const { id } = req.params;
     const { description = '', tags = [], category = 'progress', isPublic = true } = req.body;
@@ -904,31 +1070,45 @@ router.post('/:id/media', authenticate, isOwnerOrEmployee, uploadMultiple('proje
       });
     }
 
-    // Process uploaded files
-    const mediaFiles = req.files.map(file => {
-      const url = getFileUrl(req, `project-media/${file.filename}`);
-      return {
-        clientId: project.client._id,
-        projectId: id,
-        filename: file.filename,
-        originalName: file.originalname,
-        url,
-        type: file.mimetype.startsWith('image/') ? 'image' :
-          file.mimetype.startsWith('video/') ? 'video' : 'document',
-        mimeType: file.mimetype,
-        size: file.size,
-        description,
-        tags: Array.isArray(tags) ? tags : tags.split(',').map(tag => tag.trim()),
-        category,
-        isPublic: isPublic === 'true',
-        uploadedBy: req.user._id,
-        // Add dimensions for images if available
-        dimensions: file.mimetype.startsWith('image/') ? {
-          width: file.width || null,
-          height: file.height || null
-        } : undefined
-      };
-    });
+    // Upload files to GCS and process
+    const mediaFiles = [];
+    for (const file of req.files) {
+      try {
+        const { filename, url } = await uploadToGCS({
+          buffer: file.buffer,
+          mimetype: file.mimetype,
+          originalname: file.originalname,
+          folder: 'project-media',
+          projectId: id,
+        });
+
+        mediaFiles.push({
+          clientId: project.client._id,
+          projectId: id,
+          filename,
+          originalName: file.originalname,
+          url,
+          type: file.mimetype.startsWith('image/') ? 'image' :
+            file.mimetype.startsWith('video/') ? 'video' : 'document',
+          mimeType: file.mimetype,
+          size: file.size,
+          description,
+          tags: Array.isArray(tags) ? tags : (tags ? tags.split(',').map(tag => tag.trim()) : []),
+          category,
+          isPublic: isPublic === 'true' || isPublic === true,
+          uploadedBy: req.user._id,
+        });
+      } catch (uploadError) {
+        console.error('Error uploading file to GCS:', uploadError);
+      }
+    }
+
+    if (mediaFiles.length === 0) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to upload any files to GCS',
+      });
+    }
 
     const savedMedia = await ClientMedia.insertMany(mediaFiles);
 
@@ -943,7 +1123,7 @@ router.post('/:id/media', authenticate, isOwnerOrEmployee, uploadMultiple('proje
 
     res.status(201).json({
       success: true,
-      message: 'Media uploaded successfully',
+      message: 'Media uploaded successfully to GCS',
       data: { media: savedMedia },
     });
   } catch (error) {

@@ -9,6 +9,11 @@ import CheckInScreen from '../screens/employee/CheckInScreen';
 import SettingsScreen from '../screens/employee/SettingsScreen';
 import ProfileScreen from '../screens/employee/ProfileScreen';
 
+// Import executive screens
+import ExecutiveDashboardScreen from '../screens/executive/ExecutiveDashboardScreen';
+import ExecutiveProjectListScreen from '../screens/executive/ExecutiveProjectListScreen';
+import ExecutiveProjectDetailScreen from '../screens/executive/ExecutiveProjectDetailScreen';
+
 // Import client management screens
 import HomeDashboardScreen from '../screens/clientManagement/HomeDashboardScreen';
 import ClientsListScreen from '../screens/clientManagement/ClientsListScreen';
@@ -21,6 +26,15 @@ import CreateInvoiceScreen from '../screens/clientManagement/CreateInvoiceScreen
 import InvoiceDetailScreen from '../screens/clientManagement/InvoiceDetailScreen';
 import ViewInvoicesScreen from '../screens/clientManagement/ViewInvoicesScreen';
 import EditClientScreen from '../screens/clientManagement/EditClientScreen';
+
+// Import vendor team screens
+import VendorTeamDashboardScreen from '../screens/vendorTeam/VendorTeamDashboardScreen';
+import VendorTeamProjectDetailScreen from '../screens/vendorTeam/VendorTeamProjectDetailScreen';
+import VendorTeamProfileScreen from '../screens/vendorTeam/VendorTeamProfileScreen';
+
+// Import shared screens
+import AboutHousewayScreen from '../screens/shared/AboutHousewayScreen';
+
 
 const Stack = createStackNavigator();
 
@@ -114,6 +128,50 @@ const EmployeeNavigator = () => {
         }}
       />
 
+      {/* Executive Team Screens */}
+      <Stack.Screen
+        name="ExecutiveDashboard"
+        component={ExecutiveDashboardScreen}
+        options={{
+          title: 'Executive Dashboard',
+          gestureEnabled: false,
+        }}
+      />
+
+      <Stack.Screen
+        name="ExecutiveProjectList"
+        component={ExecutiveProjectListScreen}
+        options={{
+          title: 'My Projects',
+        }}
+      />
+
+      <Stack.Screen
+        name="ExecutiveProjectDetail"
+        component={ExecutiveProjectDetailScreen}
+        options={{
+          title: 'Project Details',
+        }}
+      />
+
+      {/* Vendor Team Screens */}
+      <Stack.Screen
+        name="VendorTeamDashboard"
+        component={VendorTeamDashboardScreen}
+        options={{
+          title: 'Vendor Management',
+          gestureEnabled: false,
+        }}
+      />
+
+      <Stack.Screen
+        name="VendorTeamProjectDetail"
+        component={VendorTeamProjectDetailScreen}
+        options={{
+          title: 'Project Details',
+        }}
+      />
+
       {/* TODO: Add remaining client management screens when implemented */}
       <Stack.Screen
         name="AddTimelineEvent"
@@ -176,6 +234,22 @@ const EmployeeNavigator = () => {
         component={ProfileScreen}
         options={{
           title: 'Profile',
+        }}
+      />
+
+      <Stack.Screen
+        name="VendorTeamProfile"
+        component={VendorTeamProfileScreen}
+        options={{
+          title: 'Profile',
+        }}
+      />
+
+      <Stack.Screen
+        name="AboutHouseway"
+        component={AboutHousewayScreen}
+        options={{
+          title: 'About Houseway',
         }}
       />
     </Stack.Navigator>

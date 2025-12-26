@@ -13,20 +13,7 @@ import { useAuth } from '../../context/AuthContext';
 import { clientsAPI } from '../../utils/api';
 import { useAttendance } from '../../context/AttendanceContext';
 import BottomNavBar from '../../components/common/BottomNavBar';
-
-// Premium Beige Theme
-const COLORS = {
-  primary: '#B8860B',        // Dark Golden Rod
-  primaryLight: 'rgba(184, 134, 11, 0.15)',
-  background: '#F5F5F0',     // Beige
-  cardBg: '#FFFFFF',         // White cards
-  cardBorder: 'rgba(184, 134, 11, 0.1)',
-  text: '#1A1A1A',           // Dark text
-  textMuted: '#666666',      // Muted text
-  success: '#388E3C',
-  warning: '#F57C00',
-  danger: '#D32F2F',
-};
+import { COLORS } from '../../styles/colors';
 
 const ClientProfileScreen = ({ navigation, route }) => {
   const { clientId } = route.params;
@@ -173,82 +160,28 @@ const ClientProfileScreen = ({ navigation, route }) => {
         </View>
 
         {/* Projects Section */}
-        <Text style={styles.sectionTitle}>Projects & Payments</Text>
+        <Text style={styles.sectionTitle}>Projects</Text>
 
         {projects.length > 0 ? (
-          projects.map((project) => {
-            const payments = getPaymentSchedule(project);
-            const paidCount = payments.filter(p => p.status === 'paid').length;
-            const totalPaid = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
-            const totalAmount = payments.reduce((sum, p) => sum + p.amount, 0);
-
-            return (
-              <TouchableOpacity
-                key={project._id}
-                style={styles.projectCard}
-                onPress={() => navigation.navigate('ProjectDetail', { projectId: project._id })}
-                activeOpacity={0.7}
-              >
-                <View style={styles.projectHeader}>
-                  <View style={styles.projectIconCircle}>
-                    <Feather name="briefcase" size={18} color={COLORS.text} />
-                  </View>
-                  <View style={styles.projectInfo}>
-                    <Text style={styles.projectName}>{project.title}</Text>
-                    <Text style={styles.projectId}>{project.projectId || 'No ID'}</Text>
-                  </View>
-                  <Feather name="chevron-right" size={20} color={COLORS.textMuted} />
+          projects.map((project) => (
+            <TouchableOpacity
+              key={project._id}
+              style={styles.projectCard}
+              onPress={() => navigation.navigate('ProjectDetail', { projectId: project._id })}
+              activeOpacity={0.7}
+            >
+              <View style={styles.projectHeader}>
+                <View style={styles.projectIconCircle}>
+                  <Feather name="briefcase" size={18} color={COLORS.text} />
                 </View>
-
-                {/* Project Location */}
-                {project.location?.address && (
-                  <View style={styles.projectLocation}>
-                    <Feather name="map-pin" size={12} color={COLORS.textMuted} />
-                    <Text style={styles.projectLocationText} numberOfLines={1}>
-                      {project.location.address}, {project.location.city}
-                    </Text>
-                  </View>
-                )}
-
-                {/* Payment Progress */}
-                <View style={styles.paymentProgress}>
-                  <View style={styles.paymentProgressHeader}>
-                    <Text style={styles.paymentProgressLabel}>Payment Progress</Text>
-                    <Text style={styles.paymentProgressValue}>{paidCount}/4 Paid</Text>
-                  </View>
-                  <View style={styles.progressBar}>
-                    <View style={[styles.progressFill, { width: `${(paidCount / 4) * 100}%` }]} />
-                  </View>
-                  <View style={styles.paymentAmounts}>
-                    <Text style={styles.paidAmount}>
-                      <Text style={{ color: COLORS.success }}>₹{totalPaid.toLocaleString()}</Text> paid
-                    </Text>
-                    <Text style={styles.totalAmount}>of ₹{totalAmount.toLocaleString()}</Text>
-                  </View>
+                <View style={styles.projectInfo}>
+                  <Text style={styles.projectName}>{project.title}</Text>
+                  <Text style={styles.projectId}>{project.projectId || 'No ID'}</Text>
                 </View>
-
-                {/* Payment Schedule */}
-                <View style={styles.paymentSchedule}>
-                  {payments.map((payment, idx) => (
-                    <View key={idx} style={styles.paymentItem}>
-                      <View style={[
-                        styles.paymentDot,
-                        { backgroundColor: payment.status === 'paid' ? COLORS.success : COLORS.warning }
-                      ]} />
-                      <Text style={styles.paymentItemName}>{payment.name}</Text>
-                      <Text style={styles.paymentItemAmount}>₹{payment.amount.toLocaleString()}</Text>
-                      <Text style={[
-                        styles.paymentItemStatus,
-                        { color: payment.status === 'paid' ? COLORS.success : COLORS.warning }
-                      ]}>
-                        {payment.status === 'paid' ? '✓' : '○'}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </TouchableOpacity>
-            );
-          })
+                <Feather name="chevron-right" size={20} color={COLORS.textMuted} />
+              </View>
+            </TouchableOpacity>
+          ))
         ) : (
           <View style={styles.noProjects}>
             <Feather name="folder" size={40} color={COLORS.textMuted} />

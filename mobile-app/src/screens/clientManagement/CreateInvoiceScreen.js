@@ -63,6 +63,19 @@ const CreateInvoiceScreen = ({ navigation, route }) => {
         total: 0
     });
 
+    useEffect(() => {
+        if (route.params?.amount) {
+            setLineItems([
+                {
+                    description: 'Project Payment',
+                    quantity: '1',
+                    unitPrice: String(route.params.amount),
+                    category: 'services'
+                }
+            ]);
+        }
+    }, [route.params?.amount]);
+
     // UI State
     const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
     const [errors, setErrors] = useState({});

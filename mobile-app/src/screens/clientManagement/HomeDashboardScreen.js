@@ -14,21 +14,9 @@ import { useAuth } from '../../context/AuthContext';
 import { dashboardAPI } from '../../utils/api';
 import { useAttendance } from '../../context/AttendanceContext';
 import BottomNavBar from '../../components/common/BottomNavBar';
+import { COLORS } from '../../styles/colors';
 
 const { width } = Dimensions.get('window');
-
-// Light Cream/Yellow Theme
-// Premium Beige Theme
-const COLORS = {
-  primary: '#B8860B',        // Dark Golden Rod
-  primaryLight: 'rgba(184, 134, 11, 0.15)',
-  background: '#F5F5F0',     // Beige
-  cardBg: '#FFFFFF',         // White cards
-  cardBorder: 'rgba(184, 134, 11, 0.1)',
-  text: '#1A1A1A',           // Dark gray text
-  textMuted: '#666666',      // Muted text
-  textDim: '#999999',        // Dim text
-};
 
 const HomeDashboardScreen = ({ navigation }) => {
   const { user, isAuthenticated } = useAuth();
@@ -89,8 +77,6 @@ const HomeDashboardScreen = ({ navigation }) => {
     { id: 'add_client', title: 'Add Client', subtitle: 'New client', icon: 'user-plus', route: 'AddClient' },
     { id: 'projects', title: 'View Projects', subtitle: `${dashboardStats.projects || 0} active`, icon: 'briefcase', route: 'ProjectList' },
     { id: 'add_project', title: 'Add Project', subtitle: 'Create new', icon: 'plus-square', route: 'CreateProject' },
-    { id: 'invoices', title: 'Invoices', subtitle: 'View all', icon: 'file-text', route: 'ViewInvoices' },
-    { id: 'create_invoice', title: 'Create Invoice', subtitle: 'Generate new', icon: 'plus-circle', route: 'CreateInvoice' },
   ];
 
   const DashboardTile = ({ tile }) => (

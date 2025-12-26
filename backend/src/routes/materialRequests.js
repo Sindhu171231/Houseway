@@ -23,9 +23,32 @@ router.get('/', authenticate, async (req, res) => {
         // Owner can see all material requests
         break;
       case 'employee':
-        // Employee can see requests for projects they're assigned to
-        const employeeProjects = await Project.find({ assignedEmployees: req.user._id }).select('_id');
-        query.project = { $in: employeeProjects.map(p => p._id) };
+        // VendorTeam employees should see requests they created + assigned + available
+        if (req.user.subRole === 'vendorTeam') {
+          if (available === 'true') {
+            // Show unassigned/pending requests for vendor team
+            query.$or = [
+              { 'assignedVendors': { $size: 0 } },
+              { 'assignedVendors.vendor': { $ne: req.user._id } },
+            ];
+            query.status = { $in: ['pending', 'approved'] };
+          } else {
+            // Show requests created by OR assigned to this vendor team employee
+            query.$or = [
+              { requestedBy: req.user._id },
+              { 'assignedVendors.vendor': req.user._id }
+            ];
+          }
+        } else {
+          // Other employees (designTeam, executionTeam) see requests for their assigned projects
+          const employeeProjects = await Project.find({
+            $or: [
+              { assignedEmployees: req.user._id },
+              { createdBy: req.user._id }
+            ]
+          }).select('_id');
+          query.project = { $in: employeeProjects.map(p => p._id) };
+        }
         break;
       case 'vendor':
         // If 'available' flag is set, show unassigned/pending requests
@@ -185,11 +208,17 @@ router.post('/', authenticate, isOwnerOrEmployee, validateMaterialRequest, async
     }
 
     // Check if employee is assigned to the project (if not owner)
-    if (req.user.role === 'employee' && !project.assignedEmployees.includes(req.user._id)) {
-      return res.status(403).json({
-        success: false,
-        message: 'You are not assigned to this project',
-      });
+    if (req.user.role === 'employee') {
+      const isAssignedEmployee = project.assignedEmployees.includes(req.user._id);
+      const isAssignedVendor = project.assignedVendors.includes(req.user._id);
+      const isCreator = project.createdBy?.toString() === req.user._id.toString();
+
+      if (!isAssignedEmployee && !isAssignedVendor && !isCreator) {
+        return res.status(403).json({
+          success: false,
+          message: 'You are not assigned to this project',
+        });
+      }
     }
 
     const materialRequest = new MaterialRequest({

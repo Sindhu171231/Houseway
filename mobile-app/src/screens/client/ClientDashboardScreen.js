@@ -108,23 +108,9 @@ export default function ClientDashboardScreen() {
     <GestureHandlerRootView style={[styles.container, { backgroundColor: selectedColor }]}>
       <Text style={styles.header}>Moodboard Wall</Text>
       <Text style={styles.subHeader}>Welcome back, {user?.firstName}! Here's your design board.</Text>
-
-      {/* Recent Activities Section */}
-      <View style={[styles.activitiesSection, { top: 120, right: 20 }]}>
-        <Text style={styles.activitiesTitle}>Recent Updates</Text>
-        <View style={styles.activitiesList}>
-          {recentActivities.length > 0 ? (
-            recentActivities.slice(0, 3).map((activity, index) => (
-              <View key={index} style={styles.activityItem}>
-                <Text style={styles.activityText} numberOfLines={1}>{activity.message || activity.title}</Text>
-                <Text style={styles.activityTime}>{activity.time}</Text>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.noActivityText}>No recent activities</Text>
-          )}
-        </View>
-      </View>
+      {user?.clientId && (
+        <Text style={styles.clientIdText}>Client ID: {user.clientId}</Text>
+      )}
 
       {/* Example pinned note */}
       <View style={[styles.noteCard, { top: 140, left: 20, transform: [{ rotate: "-6deg" }] }]}>
@@ -310,8 +296,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textMuted,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 5,
     fontWeight: '500',
+  },
+  clientIdText: {
+    fontSize: 12,
+    color: COLORS.primary,
+    textAlign: 'center',
+    marginBottom: 15,
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
   dropZone: {
     position: "absolute",

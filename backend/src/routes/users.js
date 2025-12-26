@@ -1,7 +1,22 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const User = require('../models/User');
 const { authenticate, isOwner, authorize } = require('../middleware/auth');
+const { uploadToGCS, deleteFromGCS } = require('../utils/gcs');
+
+// Multer memory storage for profile photo uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only images are allowed'), false);
+    }
+  }
+});
 
 /**
  * @route   GET /api/users
@@ -53,6 +68,44 @@ router.get('/', authenticate, authorize('owner', 'employee'), async (req, res) =
     res.status(500).json({
       success: false,
       message: 'Failed to get users',
+      error: error.message,
+    });
+  }
+});
+
+
+/**
+ * @route   GET /api/users/role/:role
+ * @desc    Get users by role and optional subRole
+ * @access  Private (Owner or Employee)
+ */
+router.get('/role/:role', authenticate, authorize('owner', 'employee'), async (req, res) => {
+  try {
+    const { role } = req.params;
+    const { subRole } = req.query;
+
+    const validRoles = ['owner', 'employee', 'vendor', 'client', 'guest'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid role specified',
+      });
+    }
+
+    const query = { role, isActive: true };
+    if (subRole) query.subRole = subRole;
+
+    const users = await User.find(query).select('-password');
+
+    res.json({
+      success: true,
+      data: { users },
+    });
+  } catch (error) {
+    console.error('Get users by role error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get users by role',
       error: error.message,
     });
   }
@@ -182,42 +235,7 @@ router.delete('/:id', authenticate, isOwner, async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/users/role/:role
- * @desc    Get users by role and optional subRole
- * @access  Private (Owner or Employee)
- */
-router.get('/role/:role', authenticate, authorize('owner', 'employee'), async (req, res) => {
-  try {
-    const { role } = req.params;
-    const { subRole } = req.query;
 
-    const validRoles = ['owner', 'employee', 'vendor', 'client', 'guest'];
-    if (!validRoles.includes(role)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid role specified',
-      });
-    }
-
-    const query = { role };
-    if (subRole) query.subRole = subRole;
-
-    const users = await User.find(query).select('-password');
-
-    res.json({
-      success: true,
-      data: { users },
-    });
-  } catch (error) {
-    console.error('Get users by role error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get users by role',
-      error: error.message,
-    });
-  }
-});
 
 /**
  * @route   POST /api/users/register-client
@@ -227,12 +245,14 @@ router.get('/role/:role', authenticate, authorize('owner', 'employee'), async (r
 router.post('/register-client', authenticate, authorize('owner', 'employee'), async (req, res) => {
   try {
     const {
+      clientId,  // Custom client ID (optional)
       firstName,
       lastName,
       email,
       phone,
       username,
       password,
+      address,
       clientDetails,
     } = req.body;
 
@@ -253,8 +273,20 @@ router.post('/register-client', authenticate, authorize('owner', 'employee'), as
       });
     }
 
+    // If custom clientId provided, check if it's unique
+    if (clientId) {
+      const existingClientId = await User.findOne({ clientId });
+      if (existingClientId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Client ID already exists. Please use a different ID.',
+        });
+      }
+    }
+
     // Create new client user
     const newClient = new User({
+      clientId: clientId || undefined, // Custom ID or auto-generate via pre-save hook
       firstName,
       lastName,
       email,
@@ -262,6 +294,7 @@ router.post('/register-client', authenticate, authorize('owner', 'employee'), as
       username: username || email,
       password, // Will be hashed by User model pre-save hook
       role: 'client',
+      address,
       clientDetails,
       createdBy: req.user._id,
     });
@@ -388,6 +421,128 @@ router.put('/change-password', authenticate, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to change password',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @route   POST /api/users/profile-photo
+ * @desc    Upload profile photo to GCS
+ * @access  Private
+ */
+router.post('/profile-photo', authenticate, upload.single('photo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No photo file provided',
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Delete old profile photo from GCS if exists
+    if (user.profileImage) {
+      try {
+        // Extract GCS path from URL
+        const oldUrl = user.profileImage;
+        const bucketName = process.env.GCS_BUCKET;
+        const gcsPath = oldUrl.split(`${bucketName}/`)[1];
+        if (gcsPath) {
+          await deleteFromGCS(gcsPath);
+          console.log('🗑️ Deleted old profile photo:', gcsPath);
+        }
+      } catch (deleteError) {
+        console.log('⚠️ Could not delete old photo:', deleteError.message);
+      }
+    }
+
+    // Upload new photo to GCS
+    const result = await uploadToGCS({
+      buffer: req.file.buffer,
+      mimetype: req.file.mimetype,
+      originalname: req.file.originalname,
+      folder: 'profile-photos',
+    });
+
+    // Update user's profileImage
+    user.profileImage = result.url;
+    await user.save();
+
+    console.log('✅ Profile photo uploaded for user:', user._id);
+
+    res.json({
+      success: true,
+      message: 'Profile photo uploaded successfully',
+      data: {
+        profileImage: result.url,
+      },
+    });
+  } catch (error) {
+    console.error('Profile photo upload error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload profile photo',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/users/profile-photo
+ * @desc    Delete profile photo from GCS
+ * @access  Private
+ */
+router.delete('/profile-photo', authenticate, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    if (!user.profileImage) {
+      return res.status(400).json({
+        success: false,
+        message: 'No profile photo to delete',
+      });
+    }
+
+    // Delete from GCS
+    try {
+      const oldUrl = user.profileImage;
+      const bucketName = process.env.GCS_BUCKET;
+      const gcsPath = oldUrl.split(`${bucketName}/`)[1];
+      if (gcsPath) {
+        await deleteFromGCS(gcsPath);
+        console.log('🗑️ Deleted profile photo from GCS:', gcsPath);
+      }
+    } catch (deleteError) {
+      console.log('⚠️ GCS delete error:', deleteError.message);
+    }
+
+    // Clear profileImage field
+    user.profileImage = null;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Profile photo deleted successfully',
+    });
+  } catch (error) {
+    console.error('Delete profile photo error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete profile photo',
       error: error.message,
     });
   }

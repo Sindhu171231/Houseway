@@ -92,6 +92,17 @@ const clientTimelineEventSchema = new mongoose.Schema({
     type: String,
     enum: ['low', 'medium', 'high', 'urgent'],
     default: 'medium'
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'in-progress', 'completed'],
+    default: 'in-progress'
+  },
+  startDate: {
+    type: Date
+  },
+  endDate: {
+    type: Date
   }
 }, {
   timestamps: true,
@@ -107,7 +118,7 @@ clientTimelineEventSchema.index({ visibility: 1 });
 clientTimelineEventSchema.index({ createdBy: 1 });
 
 // Virtual for formatted date
-clientTimelineEventSchema.virtual('formattedDate').get(function() {
+clientTimelineEventSchema.virtual('formattedDate').get(function () {
   return this.createdAt.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
@@ -116,7 +127,7 @@ clientTimelineEventSchema.virtual('formattedDate').get(function() {
 });
 
 // Virtual for relative time
-clientTimelineEventSchema.virtual('timeAgo').get(function() {
+clientTimelineEventSchema.virtual('timeAgo').get(function () {
   const now = new Date();
   const diffInMs = now - this.createdAt;
   const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
@@ -134,7 +145,7 @@ clientTimelineEventSchema.virtual('timeAgo').get(function() {
 });
 
 // Pre-find middleware to populate related data
-clientTimelineEventSchema.pre(/^find/, function(next) {
+clientTimelineEventSchema.pre(/^find/, function (next) {
   this.populate({
     path: 'createdBy',
     select: 'firstName lastName email role profileImage'
@@ -147,7 +158,7 @@ clientTimelineEventSchema.pre(/^find/, function(next) {
 });
 
 // Static method to get timeline events for a client
-clientTimelineEventSchema.statics.getClientTimeline = function(clientId, options = {}) {
+clientTimelineEventSchema.statics.getClientTimeline = function (clientId, options = {}) {
   const {
     page = 1,
     limit = 20,
@@ -175,7 +186,7 @@ clientTimelineEventSchema.statics.getClientTimeline = function(clientId, options
 };
 
 // Static method to get timeline events for a project
-clientTimelineEventSchema.statics.getProjectTimeline = function(projectId, options = {}) {
+clientTimelineEventSchema.statics.getProjectTimeline = function (projectId, options = {}) {
   const {
     page = 1,
     limit = 20,
@@ -196,7 +207,7 @@ clientTimelineEventSchema.statics.getProjectTimeline = function(projectId, optio
 };
 
 // Instance method to add comment
-clientTimelineEventSchema.methods.addComment = function(content, authorId, isInternal = false) {
+clientTimelineEventSchema.methods.addComment = function (content, authorId, isInternal = false) {
   this.comments.push({
     content,
     author: authorId,

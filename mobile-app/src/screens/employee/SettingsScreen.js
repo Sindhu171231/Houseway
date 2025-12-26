@@ -15,18 +15,7 @@ import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useAttendance } from '../../context/AttendanceContext';
 import BottomNavBar from '../../components/common/BottomNavBar';
-
-// Premium Beige/Gold Theme Colors
-const COLORS = {
-    primary: '#B8860B',      // Dark Golden Rod for contrast
-    background: '#F5F5F0',   // Premium Beige
-    card: '#FFFFFF',
-    cardBorder: 'rgba(184, 134, 11, 0.1)',
-    text: '#1A1A1A',
-    textMuted: '#666666',
-    danger: '#D32F2F',
-    success: '#388E3C',
-};
+import { COLORS } from '../../styles/colors';
 
 const SettingsScreen = ({ navigation }) => {
     const { user, logout } = useAuth();

@@ -13,18 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useAttendance } from '../../context/AttendanceContext';
 import BottomNavBar from '../../components/common/BottomNavBar';
-
-// Premium Beige Theme
-const COLORS = {
-  primary: '#B8860B',      // Dark Golden Rod
-  background: '#F5F5F0',   // Beige
-  cardBg: '#FFFFFF',       // White
-  cardBorder: 'rgba(184, 134, 11, 0.1)',
-  text: '#1A1A1A',
-  textMuted: '#666666',
-  success: '#388E3C',
-  danger: '#D32F2F',
-};
+import { COLORS } from '../../styles/colors';
 
 const EmployeeDashboardScreen = ({ navigation }) => {
   const { user, logout } = useAuth();
@@ -38,18 +27,20 @@ const EmployeeDashboardScreen = ({ navigation }) => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
 
-      if (isCheckedIn && todayStats?.checkInTime) {
-        const checkInDate = new Date(todayStats.checkInTime);
-        const diffInMs = new Date() - checkInDate;
-        const totalMinutes = Math.floor(diffInMs / (1000 * 60));
+      // Use server-tracked time (totalActiveMinutes) instead of calculating from checkInTime
+      // This ensures time is ONLY counted during actual app usage between check-in and check-out
+      if (todayStats?.totalActiveMinutes !== undefined) {
+        const totalMinutes = todayStats.totalActiveMinutes || 0;
         setSessionDuration({
           hours: Math.floor(totalMinutes / 60),
           minutes: totalMinutes % 60
         });
+      } else {
+        setSessionDuration({ hours: 0, minutes: 0 });
       }
     }, 1000);
     return () => clearInterval(timer);
-  }, [isCheckedIn, todayStats?.checkInTime]);
+  }, [isCheckedIn, todayStats?.totalActiveMinutes]);
 
   const loadWeeklyStats = async () => {
     try {

@@ -15,6 +15,7 @@ import VendorProfileScreen from '../screens/vendor/screens/VendorProfile';
 import WorkUpdatesScreen from '../screens/vendor/screens/WorkUpdates';
 import NegotiationChatScreen from '../screens/vendor/screens/NegotiationChat';
 import UploadWorkStatusScreen from '../screens/vendor/screens/UploadWorkStatus';
+import AboutHousewayScreen from '../screens/shared/AboutHousewayScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -51,6 +52,7 @@ const ProfileStack = () => (
     <Stack.Screen name="MediaGallery" component={MediaGalleryScreen} />
     <Stack.Screen name="WorkUpdates" component={WorkUpdatesScreen} />
     <Stack.Screen name="UploadWorkStatus" component={UploadWorkStatusScreen} />
+    <Stack.Screen name="AboutHouseway" component={AboutHousewayScreen} />
   </Stack.Navigator>
 );
 

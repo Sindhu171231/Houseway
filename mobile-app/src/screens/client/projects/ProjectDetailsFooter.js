@@ -5,7 +5,7 @@ import MediaScreen from './MediaScreen';
 import PaymentsScreen from './PaymentsScreen';
 import CatalogScreen from './CatalogScreen';
 import InspirationScreen from './InspirationScreen';
-import { View, Text } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ProjectOverview from './OverviewPage';
 const Tab = createBottomTabNavigator();

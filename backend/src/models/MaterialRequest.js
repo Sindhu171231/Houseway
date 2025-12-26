@@ -83,7 +83,7 @@ const materialRequestSchema = new mongoose.Schema({
   materials: {
     type: [materialItemSchema],
     validate: {
-      validator: function(materials) {
+      validator: function (materials) {
         return materials && materials.length > 0;
       },
       message: 'At least one material is required',
@@ -205,7 +205,7 @@ materialRequestSchema.index({ requiredBy: 1 });
 materialRequestSchema.index({ createdAt: -1 });
 
 // Virtual for days until required
-materialRequestSchema.virtual('daysUntilRequired').get(function() {
+materialRequestSchema.virtual('daysUntilRequired').get(function () {
   if (this.requiredBy) {
     const diffTime = this.requiredBy - new Date();
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -214,7 +214,7 @@ materialRequestSchema.virtual('daysUntilRequired').get(function() {
 });
 
 // Virtual for cost variance
-materialRequestSchema.virtual('costVariance').get(function() {
+materialRequestSchema.virtual('costVariance').get(function () {
   if (this.totalEstimatedCost && this.actualCost) {
     return this.actualCost - this.totalEstimatedCost;
   }
@@ -222,58 +222,58 @@ materialRequestSchema.virtual('costVariance').get(function() {
 });
 
 // Pre-save middleware to calculate total estimated cost
-materialRequestSchema.pre('save', function(next) {
+materialRequestSchema.pre('save', function (next) {
   if (this.materials && this.materials.length > 0) {
     this.totalEstimatedCost = this.materials.reduce((total, material) => {
       return total + (material.estimatedCost || 0);
     }, 0);
   }
-  
-  // Validate required by date
-  if (this.requiredBy && this.requiredBy <= new Date()) {
+
+  // Only validate required by date for NEW documents (not updates)
+  if (this.isNew && this.requiredBy && this.requiredBy <= new Date()) {
     return next(new Error('Required by date must be in the future'));
   }
-  
+
   next();
 });
 
 // Static method to find requests by project
-materialRequestSchema.statics.findByProject = function(projectId) {
+materialRequestSchema.statics.findByProject = function (projectId) {
   return this.find({ project: projectId })
     .populate('project requestedBy assignedVendors.vendor assignedVendors.assignedBy');
 };
 
 // Static method to find requests by vendor
-materialRequestSchema.statics.findByVendor = function(vendorId) {
+materialRequestSchema.statics.findByVendor = function (vendorId) {
   return this.find({ 'assignedVendors.vendor': vendorId })
     .populate('project requestedBy assignedVendors.vendor assignedVendors.assignedBy');
 };
 
 // Static method to find pending requests
-materialRequestSchema.statics.findPending = function() {
+materialRequestSchema.statics.findPending = function () {
   return this.find({ status: 'pending' })
     .populate('project requestedBy assignedVendors.vendor');
 };
 
 // Instance method to assign vendor
-materialRequestSchema.methods.assignVendor = function(vendorId, assignedBy) {
+materialRequestSchema.methods.assignVendor = function (vendorId, assignedBy) {
   // Check if vendor is already assigned
   const existingAssignment = this.assignedVendors.find(
     assignment => assignment.vendor.toString() === vendorId.toString()
   );
-  
+
   if (!existingAssignment) {
     this.assignedVendors.push({
       vendor: vendorId,
       assignedBy: assignedBy,
     });
   }
-  
+
   return this.save();
 };
 
 // Instance method to approve request
-materialRequestSchema.methods.approve = function(approvedBy, comments = '') {
+materialRequestSchema.methods.approve = function (approvedBy, comments = '') {
   this.approvals.push({
     approvedBy,
     status: 'approved',
@@ -284,7 +284,7 @@ materialRequestSchema.methods.approve = function(approvedBy, comments = '') {
 };
 
 // Instance method to reject request
-materialRequestSchema.methods.reject = function(rejectedBy, comments = '') {
+materialRequestSchema.methods.reject = function (rejectedBy, comments = '') {
   this.approvals.push({
     approvedBy: rejectedBy,
     status: 'rejected',
@@ -295,7 +295,7 @@ materialRequestSchema.methods.reject = function(rejectedBy, comments = '') {
 };
 
 // Instance method to add note
-materialRequestSchema.methods.addNote = function(content, author) {
+materialRequestSchema.methods.addNote = function (content, author) {
   this.notes.push({
     content,
     author,

@@ -5,7 +5,6 @@ import {
     StyleSheet,
     TouchableOpacity,
     ActivityIndicator,
-    Alert,
     Platform,
     ScrollView,
 } from 'react-native';
@@ -16,17 +15,8 @@ import { useAttendance } from '../../context/AttendanceContext';
 import { attendanceAPI } from '../../utils/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomNavBar from '../../components/common/BottomNavBar';
-
-// Premium Beige Theme
-const COLORS = {
-    primary: '#B8860B',      // Dark Golden Rod
-    background: '#F5F5F0',   // Beige
-    card: '#FFFFFF',
-    text: '#1A1A1A',
-    textMuted: '#666666',
-    success: '#388E3C',
-    danger: '#D32F2F',
-};
+import ToastMessage from '../../components/common/ToastMessage';
+import { COLORS } from '../../styles/colors';
 
 const CheckInScreen = ({ navigation }) => {
     const { user } = useAuth();
@@ -35,6 +25,15 @@ const CheckInScreen = ({ navigation }) => {
     const [checkingIn, setCheckingIn] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
     const [sessionDuration, setSessionDuration] = useState(0);
+    const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
+
+    const showToast = (message, type = 'success') => {
+        setToast({ visible: true, message, type });
+    };
+
+    const hideToast = () => {
+        setToast(prev => ({ ...prev, visible: false }));
+    };
 
     useEffect(() => {
         const init = async () => {
@@ -48,43 +47,38 @@ const CheckInScreen = ({ navigation }) => {
         };
         init();
 
+        // Timer only updates current clock display, NOT session duration
+        // Session duration is tracked by server heartbeats only
         const timer = setInterval(() => {
             setCurrentTime(new Date());
 
-            if (contextIsCheckedIn && todayStats?.checkInTime) {
-                const checkInDate = new Date(todayStats.checkInTime);
-                const diff = Math.floor((new Date() - checkInDate) / 1000);
-                // Ensure diff is not negative due to clock skew
-                setSessionDuration(Math.max(0, diff));
+            // ONLY show time when actively checked in
+            // Reset to 0 when checked out - don't keep showing old session time
+            if (contextIsCheckedIn && todayStats?.totalActiveMinutes !== undefined) {
+                // Convert server minutes to seconds for display
+                const serverTrackedSeconds = (todayStats.totalActiveMinutes || 0) * 60;
+                setSessionDuration(serverTrackedSeconds);
             } else {
+                // When checked out, show 0 - ready for next session
                 setSessionDuration(0);
             }
         }, 1000);
 
         return () => clearInterval(timer);
-    }, [contextIsCheckedIn, todayStats?.checkInTime]);
+    }, [contextIsCheckedIn, todayStats?.totalActiveMinutes]);
 
     const handleCheckIn = async () => {
         setCheckingIn(true);
         try {
             const result = await checkIn();
             if (result.success) {
-                if (Platform.OS === 'web') {
-                    alert('✅ Checked in successfully!');
-                } else {
-                    Alert.alert('Success', 'Checked in successfully!');
-                }
+                showToast('Checked in successfully!', 'success');
             } else {
                 throw new Error(result.message || 'Check-in failed');
             }
         } catch (error) {
             console.error('Check-in error:', error);
-            const errorMsg = error.message || 'Failed to check in';
-            if (Platform.OS === 'web') {
-                alert('Failed: ' + errorMsg);
-            } else {
-                Alert.alert('Error', errorMsg);
-            }
+            showToast(error.message || 'Failed to check in', 'error');
         } finally {
             setCheckingIn(false);
         }
@@ -96,27 +90,13 @@ const CheckInScreen = ({ navigation }) => {
             try {
                 const result = await checkOut();
                 if (result.success) {
-                    if (Platform.OS === 'web') {
-                        alert('✅ Checked out successfully!');
-                    } else {
-                        Alert.alert('Success', 'Checked out successfully!');
-                    }
+                    showToast('Checked out successfully!', 'success');
                 } else {
-                    const errorMsg = result.message || 'Check-out failed';
-                    if (Platform.OS === 'web') {
-                        alert('Error: ' + errorMsg);
-                    } else {
-                        Alert.alert('Error', errorMsg);
-                    }
+                    showToast(result.message || 'Check-out failed', 'error');
                 }
             } catch (error) {
                 console.error('Check-out error:', error);
-                const errorMsg = 'Failed to check out. Please try again.';
-                if (Platform.OS === 'web') {
-                    alert('Error: ' + errorMsg);
-                } else {
-                    Alert.alert('Error', errorMsg);
-                }
+                showToast('Failed to check out. Please try again.', 'error');
             } finally {
                 setCheckingIn(false);
             }
@@ -155,9 +135,10 @@ const CheckInScreen = ({ navigation }) => {
     };
 
     const formatDuration = (seconds) => {
-        const hrs = Math.floor(seconds / 3600);
-        const mins = Math.floor((seconds % 3600) / 60);
-        const secs = seconds % 60;
+        const totalSeconds = Math.floor(seconds);
+        const hrs = Math.floor(totalSeconds / 3600);
+        const mins = Math.floor((totalSeconds % 3600) / 60);
+        const secs = totalSeconds % 60;
         return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     };
 
@@ -172,6 +153,14 @@ const CheckInScreen = ({ navigation }) => {
 
     return (
         <View style={styles.container}>
+            {/* Toast Notification */}
+            <ToastMessage
+                visible={toast.visible}
+                message={toast.message}
+                type={toast.type}
+                onHide={hideToast}
+            />
+
             <LinearGradient colors={[COLORS.background, '#F9F9F4', COLORS.background]} style={styles.gradient}>
                 <ScrollView
                     style={styles.scrollView}
@@ -205,15 +194,37 @@ const CheckInScreen = ({ navigation }) => {
 
                     {/* Session Card */}
                     <View style={styles.sessionCard}>
-                        {contextIsCheckedIn && (
+                        {contextIsCheckedIn ? (
                             <View style={styles.activeSessionBadge}>
                                 <View style={styles.activeDot} />
                                 <Text style={styles.activeSessionText}>ACTIVE SESSION</Text>
+                            </View>
+                        ) : (
+                            <View style={[styles.activeSessionBadge, { backgroundColor: '#f0f0f0' }]}>
+                                <View style={[styles.activeDot, { backgroundColor: '#999' }]} />
+                                <Text style={[styles.activeSessionText, { color: '#999' }]}>NO ACTIVE SESSION</Text>
+                            </View>
+                        )}
+
+                        {/* Session Info with Check-in Time */}
+                        {contextIsCheckedIn && todayStats?.checkInTime && (
+                            <View style={styles.sessionInfoRow}>
+                                <Text style={styles.sessionInfoLabel}>Session started at</Text>
+                                <Text style={styles.sessionInfoValue}>
+                                    {new Date(todayStats.checkInTime).toLocaleTimeString('en-US', {
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        hour12: true,
+                                    })}
+                                </Text>
                             </View>
                         )}
 
                         <View style={styles.durationContainer}>
                             <Text style={styles.duration}>{formatDuration(sessionDuration)}</Text>
+                            <Text style={styles.durationLabel}>
+                                {contextIsCheckedIn ? 'Active Duration' : 'Ready to start'}
+                            </Text>
                         </View>
 
                         <TouchableOpacity
@@ -242,23 +253,53 @@ const CheckInScreen = ({ navigation }) => {
                     <View style={styles.hoursCard}>
                         <Feather name="clock" size={18} color="#666" />
                         <View style={styles.hoursContent}>
-                            <Text style={styles.hoursLabel}>Active Hours (This Week)</Text>
-                            <Text style={styles.hoursValue}>9 hours logged</Text>
+                            <Text style={styles.hoursLabel}>Active Hours (Today)</Text>
+                            <Text style={styles.hoursValue}>
+                                {contextIsCheckedIn
+                                    ? `${Math.floor(sessionDuration / 3600)}h ${Math.floor((sessionDuration % 3600) / 60)}m logged`
+                                    : '0h 0m logged'}
+                            </Text>
                         </View>
                     </View>
 
-                    {/* Client Management Card - Only show when checked in */}
+                    {/* Management Card - Only show when checked in */}
+                    {/* Route to different dashboards based on subRole */}
                     {contextIsCheckedIn && (
                         <TouchableOpacity
                             style={styles.clientManagementCard}
-                            onPress={() => navigation.navigate('HomeDashboard')}
+                            onPress={() => {
+                                // Route based on subRole
+                                if (user?.subRole === 'executionTeam') {
+                                    navigation.navigate('ExecutiveDashboard');
+                                } else if (user?.subRole === 'vendorTeam') {
+                                    navigation.navigate('VendorTeamDashboard');
+                                } else {
+                                    navigation.navigate('HomeDashboard');
+                                }
+                            }}
                         >
                             <View style={styles.cmIconContainer}>
-                                <Feather name="users" size={20} color="#fff" />
+                                <Feather
+                                    name={
+                                        user?.subRole === 'executionTeam' ? "hard-hat" :
+                                            user?.subRole === 'vendorTeam' ? "package" : "users"
+                                    }
+                                    size={20}
+                                    color="#fff"
+                                />
                             </View>
                             <View style={styles.cmContent}>
-                                <Text style={styles.cmTitle}>Client Management</Text>
-                                <Text style={styles.cmSubtitle}>Projects · Clients · Invoices</Text>
+                                <Text style={styles.cmTitle}>
+                                    {user?.subRole === 'executionTeam' ? 'Site Management' :
+                                        user?.subRole === 'vendorTeam' ? 'Vendor Management' : 'Client Management'}
+                                </Text>
+                                <Text style={styles.cmSubtitle}>
+                                    {user?.subRole === 'executionTeam'
+                                        ? 'Projects · Timeline · Media'
+                                        : user?.subRole === 'vendorTeam'
+                                            ? 'Projects · Vendors · Material Requests'
+                                            : 'Projects · Clients · Invoices'}
+                                </Text>
                             </View>
                             <Feather name="chevron-right" size={20} color="#ccc" />
                         </TouchableOpacity>
@@ -382,12 +423,38 @@ const styles = StyleSheet.create({
     },
     durationContainer: {
         marginBottom: 20,
+        alignItems: 'center',
     },
     duration: {
         fontSize: 48,
         fontWeight: '300',
         color: '#1a1a1a',
         letterSpacing: 2,
+    },
+    durationLabel: {
+        fontSize: 12,
+        color: '#888',
+        marginTop: 4,
+    },
+    sessionInfoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        backgroundColor: '#f8f8f8',
+        borderRadius: 8,
+    },
+    sessionInfoLabel: {
+        fontSize: 12,
+        color: '#666',
+        marginRight: 8,
+    },
+    sessionInfoValue: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#1a1a1a',
     },
     actionButton: {
         flexDirection: 'row',

@@ -138,6 +138,136 @@ router.post('/', authenticate, async (req, res) => {
 });
 
 /**
+ * @route   POST /api/invoices/project/:projectId/upload
+ * @desc    Upload invoice PDF directly
+ * @access  Private
+ */
+const multer = require('multer');
+const memoryStorage = multer.memoryStorage();
+const uploadInvoicePDF = multer({
+    storage: memoryStorage,
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'application/pdf') {
+            return cb(null, true);
+        }
+        cb(new Error('Only PDF files are allowed'));
+    }
+}).single('invoice');
+
+router.post('/project/:projectId/upload', authenticate, (req, res) => {
+    uploadInvoicePDF(req, res, async (err) => {
+        if (err) {
+            return res.status(400).json({
+                success: false,
+                message: err.message || 'File upload failed',
+            });
+        }
+
+        try {
+            const { projectId } = req.params;
+            const file = req.file;
+
+            if (!file) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'No PDF file uploaded',
+                });
+            }
+
+            // Validate project exists
+            const project = await Project.findById(projectId).populate('client');
+            if (!project) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Project not found',
+                });
+            }
+
+            // Get invoice name and description from form data
+            const invoiceName = req.body.invoiceName || '';
+            const description = req.body.description || '';
+
+            console.log('📄 [Invoice] Uploading PDF:', file.originalname, 'Name:', invoiceName);
+
+            // Upload to GCS
+            const uploadResult = await uploadToGCS({
+                buffer: file.buffer,
+                mimetype: 'application/pdf',
+                originalname: file.originalname,
+                folder: 'invoices',
+                projectId: projectId.toString(),
+            });
+
+            // Generate invoice number
+            const count = await ClientInvoice.countDocuments();
+            const invoiceNumber = `INV-${String(count + 1).padStart(5, '0')}`;
+
+            // Create invoice record with name and description
+            const invoice = new ClientInvoice({
+                invoiceNumber,
+                clientId: project.client._id,
+                projectId,
+                status: 'sent',
+                issueDate: new Date(),
+                dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+                lineItems: [],
+                subtotal: 0,
+                taxRate: 0,
+                discountType: 'fixed',
+                discountValue: 0,
+                notes: description, // Store description in notes field
+                paymentTerms: invoiceName, // Store invoice name for display
+                createdBy: req.user._id,
+                attachments: [{
+                    filename: uploadResult.filename,
+                    originalName: file.originalname,
+                    url: uploadResult.url,
+                    size: file.size,
+                    uploadedAt: new Date()
+                }]
+            });
+
+            await invoice.save();
+
+            // Also create a File record
+            try {
+                const fileDoc = new File({
+                    filename: uploadResult.filename,
+                    originalName: file.originalname,
+                    category: 'invoices',
+                    mimeType: 'application/pdf',
+                    size: file.size,
+                    path: uploadResult.url,
+                    uploadedBy: req.user._id,
+                    project: projectId,
+                    invoiceInfo: invoiceName || `Invoice #${invoiceNumber}`,
+                    invoiceDate: new Date()
+                });
+                await fileDoc.save();
+            } catch (fileError) {
+                console.error('Error creating File record:', fileError);
+            }
+
+            console.log('✅ [Invoice] PDF uploaded successfully:', invoiceNumber);
+
+            res.status(201).json({
+                success: true,
+                message: 'Invoice PDF uploaded successfully',
+                data: { invoice },
+            });
+        } catch (error) {
+            console.error('Upload invoice PDF error:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to upload invoice',
+                error: error.message,
+            });
+        }
+    });
+});
+
+/**
  * @route   GET /api/invoices/project/:projectId
  * @desc    Get all invoices for a project
  * @access  Private
@@ -157,10 +287,33 @@ router.get('/project/:projectId', authenticate, async (req, res) => {
 
         const total = await ClientInvoice.countDocuments(query);
 
+        const { getSignedUrl } = require('../utils/gcs');
+
+        // Generate signed URLs for attachments
+        const invoicesWithUrls = await Promise.all(invoices.map(async (inv) => {
+            const invoiceObj = inv.toObject();
+            if (invoiceObj.attachments && invoiceObj.attachments.length > 0) {
+                const attachment = invoiceObj.attachments[0];
+                const projectIdStr = invoiceObj.projectId?._id?.toString() || invoiceObj.projectId?.toString();
+                const gcsPath = projectIdStr
+                    ? `invoices/${projectIdStr}/${attachment.filename}`
+                    : `invoices/${attachment.filename}`;
+
+                try {
+                    const signedUrl = await getSignedUrl(gcsPath, 60);
+                    invoiceObj.fileUrl = signedUrl;
+                } catch (err) {
+                    console.warn('Could not generate signed URL for invoice:', gcsPath);
+                    invoiceObj.fileUrl = attachment.url;
+                }
+            }
+            return invoiceObj;
+        }));
+
         res.json({
             success: true,
             data: {
-                invoices,
+                invoices: invoicesWithUrls,
                 pagination: {
                     page: parseInt(page),
                     limit: parseInt(limit),
@@ -354,11 +507,15 @@ router.delete('/:invoiceId', authenticate, async (req, res) => {
             });
         }
 
-        // Only allow deleting draft invoices
-        if (invoice.status !== 'draft') {
-            return res.status(400).json({
+        // Check authorization: owner or creator can delete
+        const isOwner = req.user.role === 'owner';
+        const isCreator = invoice.createdBy?.toString() === req.user._id.toString();
+        const isEmployee = req.user.role === 'employee';
+
+        if (!isOwner && !isCreator && !isEmployee) {
+            return res.status(403).json({
                 success: false,
-                message: 'Only draft invoices can be deleted',
+                message: 'Not authorized to delete this invoice',
             });
         }
 

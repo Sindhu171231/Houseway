@@ -29,6 +29,49 @@ const COLORS = {
     danger: '#EF4444',
 };
 
+// InputField component moved OUTSIDE to prevent re-creation on each render
+const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default', multiline = false }) => (
+    <View style={inputFieldStyles.inputContainer}>
+        <Text style={inputFieldStyles.inputLabel}>{label}</Text>
+        <TextInput
+            style={[inputFieldStyles.input, multiline && inputFieldStyles.multilineInput]}
+            value={value}
+            onChangeText={onChangeText}
+            placeholder={placeholder}
+            placeholderTextColor={COLORS.textMuted}
+            keyboardType={keyboardType}
+            multiline={multiline}
+            numberOfLines={multiline ? 4 : 1}
+        />
+    </View>
+);
+
+const inputFieldStyles = StyleSheet.create({
+    inputContainer: {
+        marginBottom: 16,
+    },
+    inputLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.text,
+        marginBottom: 8,
+    },
+    input: {
+        backgroundColor: COLORS.inputBg,
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        fontSize: 16,
+        color: COLORS.text,
+        borderWidth: 1,
+        borderColor: COLORS.cardBorder,
+    },
+    multilineInput: {
+        height: 100,
+        textAlignVertical: 'top',
+    },
+});
+
 const EditClientScreen = ({ navigation, route }) => {
     const { clientId, clientData } = route.params;
     const { user } = useAuth();
@@ -145,22 +188,6 @@ const EditClientScreen = ({ navigation, route }) => {
             setIsLoading(false);
         }
     };
-
-    const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default', multiline = false }) => (
-        <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>{label}</Text>
-            <TextInput
-                style={[styles.input, multiline && styles.multilineInput]}
-                value={value}
-                onChangeText={onChangeText}
-                placeholder={placeholder}
-                placeholderTextColor={COLORS.textMuted}
-                keyboardType={keyboardType}
-                multiline={multiline}
-                numberOfLines={multiline ? 4 : 1}
-            />
-        </View>
-    );
 
     if (isFetching) {
         return (

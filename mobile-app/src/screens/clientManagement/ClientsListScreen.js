@@ -16,25 +16,9 @@ import { useAuth } from '../../context/AuthContext';
 import { clientsAPI, projectsAPI } from '../../utils/api';
 import { useAttendance } from '../../context/AttendanceContext';
 import BottomNavBar from '../../components/common/BottomNavBar';
+import { COLORS } from '../../styles/colors';
 
 const { width } = Dimensions.get('window');
-
-// Light Cream/Yellow Theme
-// Premium Beige Theme
-const COLORS = {
-  primary: '#cda236ff',        // Dark Golden Rod
-  primaryLight: 'rgba(184, 134, 11, 0.15)',
-  background: '#F5F5F0',     // Beige
-  cardBg: '#FFFFFF',         // White cards
-  cardBorder: 'rgba(184, 134, 11, 0.1)',
-  text: '#1A1A1A',           // Dark text
-  textMuted: '#666666',      // Muted text
-  textDim: '#999999',        // Dim text
-  activeTab: '#B8860B',
-  pastTab: '#666666',
-  success: '#388E3C',
-  danger: '#D32F2F',
-};
 
 const ClientsListScreen = ({ navigation }) => {
   const { user, isAuthenticated } = useAuth();
@@ -139,11 +123,13 @@ const ClientsListScreen = ({ navigation }) => {
       );
     }
 
-    // Search filter
+    // Search filter - search by name, email, or ID
     if (searchQuery) {
+      const query = searchQuery.toLowerCase();
       filtered = filtered.filter(client =>
-        `${client.firstName} ${client.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        client.email?.toLowerCase().includes(searchQuery.toLowerCase())
+        `${client.firstName} ${client.lastName}`.toLowerCase().includes(query) ||
+        client.email?.toLowerCase().includes(query) ||
+        client._id?.toLowerCase().includes(query)
       );
     }
 
@@ -180,6 +166,9 @@ const ClientsListScreen = ({ navigation }) => {
           </View>
           <View style={styles.clientInfo}>
             <Text style={styles.clientName}>{item.firstName} {item.lastName}</Text>
+            {item.clientId && (
+              <Text style={styles.clientIdBadge}>{item.clientId}</Text>
+            )}
             <Text style={styles.clientEmail}>{item.email}</Text>
           </View>
           <Feather name="chevron-right" size={22} color={COLORS.textMuted} />
@@ -243,7 +232,7 @@ const ClientsListScreen = ({ navigation }) => {
           <Feather name="arrow-left" size={22} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>View Clients</Text>
-        
+
       </View>
 
       {/* Search Bar */}
@@ -251,7 +240,7 @@ const ClientsListScreen = ({ navigation }) => {
         <Feather name="search" size={18} color={COLORS.textMuted} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search clients..."
+          placeholder="Search by name, email or ID..."
           placeholderTextColor={COLORS.textDim}
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -292,6 +281,7 @@ const ClientsListScreen = ({ navigation }) => {
 
       {/* Client List */}
       <FlatList
+        style={{ flex: 1 }}
         data={filteredClients}
         renderItem={renderClientCard}
         keyExtractor={(item) => item._id}
@@ -304,7 +294,10 @@ const ClientsListScreen = ({ navigation }) => {
           />
         }
         keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={true}
+        bounces={true}
+        scrollEnabled={true}
+        nestedScrollEnabled={true}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Feather name="users" size={48} color={COLORS.textMuted} />
@@ -429,8 +422,8 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 20,
-    paddingBottom: 150,
-    flexGrow: 1,
+    paddingBottom: 180,
+    paddingTop: 8,
   },
   clientCard: {
     backgroundColor: COLORS.cardBg,
@@ -470,6 +463,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: COLORS.text,
+  },
+  clientIdBadge: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.primary,
+    backgroundColor: COLORS.primaryMuted,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+    marginTop: 2,
   },
   clientEmail: {
     fontSize: 13,

@@ -14,7 +14,7 @@ uploadDirs.forEach(dir => {
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     let uploadPath = 'uploads/';
-    
+
     // Determine upload path based on file type and route
     if (req.route.path.includes('quotation')) {
       uploadPath += 'quotations/';
@@ -25,7 +25,7 @@ const storage = multer.diskStorage({
     } else {
       uploadPath += 'documents/';
     }
-    
+
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
@@ -39,12 +39,17 @@ const storage = multer.diskStorage({
 
 // File filter function
 const fileFilter = (req, file, cb) => {
-  // Allowed file types
+  // Allowed file types - includes images, videos, documents
   const allowedTypes = {
     'image/jpeg': true,
     'image/jpg': true,
     'image/png': true,
     'image/gif': true,
+    'video/mp4': true,
+    'video/quicktime': true,
+    'video/webm': true,
+    'video/x-msvideo': true,
+    'video/x-ms-wmv': true,
     'application/pdf': true,
     'application/msword': true,
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': true,
@@ -52,7 +57,7 @@ const fileFilter = (req, file, cb) => {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': true,
     'text/plain': true,
   };
-  
+
   if (allowedTypes[file.mimetype]) {
     cb(null, true);
   } else {
@@ -65,7 +70,7 @@ const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024, // 10MB default
+    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 100 * 1024 * 1024, // 100MB default for video support
     files: 5, // Maximum 5 files per request
   },
 });
@@ -78,7 +83,7 @@ const uploadSingle = (fieldName) => {
         if (err.code === 'LIMIT_FILE_SIZE') {
           return res.status(400).json({
             success: false,
-            message: 'File too large. Maximum size is 10MB.',
+            message: 'File too large. Maximum size is 100MB.',
           });
         }
         if (err.code === 'LIMIT_FILE_COUNT') {
@@ -110,7 +115,7 @@ const uploadMultiple = (fieldName, maxCount = 5) => {
         if (err.code === 'LIMIT_FILE_SIZE') {
           return res.status(400).json({
             success: false,
-            message: 'File too large. Maximum size is 10MB.',
+            message: 'File too large. Maximum size is 100MB.',
           });
         }
         if (err.code === 'LIMIT_FILE_COUNT') {
@@ -142,7 +147,7 @@ const uploadFields = (fields) => {
         if (err.code === 'LIMIT_FILE_SIZE') {
           return res.status(400).json({
             success: false,
-            message: 'File too large. Maximum size is 10MB.',
+            message: 'File too large. Maximum size is 100MB.',
           });
         }
         if (err.code === 'LIMIT_FILE_COUNT') {

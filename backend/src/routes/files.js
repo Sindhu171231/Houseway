@@ -44,16 +44,20 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 500 * 1024 * 1024, // 500MB limit for video support
   },
   fileFilter: (req, file, cb) => {
-    // Allow common file types
+    // Allow common file types including videos
     const allowedTypes = [
       'image/jpeg',
       'image/png',
       'image/gif',
+      'image/jpg',
       'video/mp4',
       'video/quicktime',
+      'video/webm',
+      'video/x-msvideo',
+      'video/x-ms-wmv',
       'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -66,13 +70,35 @@ const upload = multer({
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only images, PDFs, Word documents, and text files are allowed.'));
+      cb(new Error('Invalid file type. Allowed: images, videos, PDFs, Word documents, and text files.'));
     }
   }
 });
 
-// Memory storage for invoice images to GCS
+// Memory storage for GCS uploads
 const memoryStorage = multer.memoryStorage();
+
+const uploadToMemory = multer({
+  storage: memoryStorage,
+  limits: {
+    fileSize: 500 * 1024 * 1024, // 500MB for video support
+  },
+  fileFilter: (req, file, cb) => {
+    const allowed = [
+      'image/jpeg', 'image/png', 'image/jpg', 'image/gif',
+      'video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo', 'video/x-ms-wmv',
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain'
+    ];
+    if (allowed.includes(file.mimetype)) return cb(null, true);
+    cb(new Error('Invalid file type. Allowed: Images, Videos, PDF, Word, Excel, Text'));
+  }
+}).single('file');
+
 const uploadInvoiceImage = multer({
   storage: memoryStorage,
   limits: {
@@ -90,77 +116,73 @@ const uploadInvoiceImage = multer({
  * @desc    Upload a file
  * @access  Private
  */
-router.post('/upload', authenticate, upload.single('file'), async (req, res) => {
+/**
+ * @route   POST /api/files/upload
+ * @desc    Upload a file directly to Google Cloud Storage
+ * @access  Private
+ */
+router.post('/upload', authenticate, (req, res, next) => {
+  uploadToMemory(req, res, (err) => {
+    if (err) {
+      console.error('[Files] Multer Error:', err);
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     console.log('[Files] Upload request received:', {
-      file: req.file,
+      hasFile: !!req.file,
+      fileInfo: req.file ? { name: req.file.originalname, size: req.file.size } : null,
       body: req.body,
-      headers: req.headers,
-      files: req.files  // Check if files are in a different property
+      contentType: req.headers['content-type']
     });
 
-    // Also log raw request info
-    console.log('[Files] Request method:', req.method);
-    console.log('[Files] Request URL:', req.url);
-    console.log('[Files] Content-Type header:', req.headers['content-type']);
-
     if (!req.file) {
-      console.log('[Files] No file found in request. Checking multer...');
-
-      // Log multer error if exists
-      if (req.multerError) {
-        console.log('[Files] Multer error:', req.multerError);
-      }
-
       return res.status(400).json({
         success: false,
         message: 'No file uploaded',
       });
     }
 
+    const category = req.body.category || 'documents';
+
+    // Upload to GCS
+    const { filename, url } = await uploadToGCS({
+      buffer: req.file.buffer,
+      mimetype: req.file.mimetype,
+      originalname: req.file.originalname,
+      folder: category,
+      projectId: req.body.projectId, // Optional: organize by project folder
+    });
+
     // Create file record in database
     const fileData = {
-      filename: req.file.filename,
+      filename: filename,
       originalName: req.file.originalname,
-      category: req.body.category || 'documents',
+      category: category,
       mimeType: req.file.mimetype,
       size: req.file.size,
-      path: req.file.path,
+      path: url, // GCS URL
       uploadedBy: req.user._id,
       tags: req.body.tags ? JSON.parse(req.body.tags) : [],
+      project: req.body.projectId || undefined,
     };
 
-    // Add project ID if provided
-    if (req.body.projectId) {
-      fileData.project = req.body.projectId;
-      console.log('[Files] Associating file with project:', req.body.projectId);
-    }
-
     const file = new File(fileData);
-
     await file.save();
     await file.populate('uploadedBy', 'firstName lastName');
 
     res.status(201).json({
       success: true,
-      message: 'File uploaded successfully',
+      message: 'File uploaded to GCS successfully',
       data: { file },
     });
   } catch (error) {
     console.error('File upload error:', error);
-
-    // Delete uploaded file if database save failed
-    if (req.file && req.file.path) {
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch (unlinkError) {
-        console.error('Failed to delete uploaded file:', unlinkError);
-      }
-    }
-
     res.status(500).json({
       success: false,
-      message: 'Failed to upload file',
+      message: 'Failed to upload file to GCS',
       error: error.message,
     });
   }
@@ -538,6 +560,74 @@ router.get("/project/:projectId/invoices", authenticate, async (req, res) => {
 
 
 /**
+ * @route   GET /api/files
+ * @desc    Get files with optional filters (projectId, category)
+ * @access  Private
+ */
+router.get('/', authenticate, async (req, res) => {
+  try {
+    const { projectId, category } = req.query;
+    const filter = {};
+
+    if (projectId) {
+      if (!mongoose.Types.ObjectId.isValid(projectId)) {
+        return res.status(400).json({ success: false, message: 'Invalid project ID' });
+      }
+      filter.project = projectId;
+    }
+
+    if (category) {
+      filter.category = category;
+    } else {
+      // By default, if no category is specified, exclude invoices to show only docs
+      filter.category = { $ne: 'invoices' };
+    }
+
+    const files = await File.find(filter)
+      .populate('uploadedBy', 'firstName lastName')
+      .sort({ createdAt: -1 });
+
+    const { getSignedUrl } = require('../utils/gcs');
+
+    // Generate signed URLs for all files
+    const filesWithUrls = await Promise.all(files.map(async (file) => {
+      // For GCS uploads, path is the full URL, but we need the filename to generate a signed URL
+      // Upload logic uses folder/projectId/filename if projectId is present
+      const projectIdStr = file.project ? file.project.toString() : null;
+      const gcsPath = projectIdStr
+        ? `${file.category}/${projectIdStr}/${file.filename}`
+        : `${file.category}/${file.filename}`;
+
+      let signedUrl = file.path; // Fallback
+
+      try {
+        signedUrl = await getSignedUrl(gcsPath, 60);
+      } catch (err) {
+        console.warn('Could not generate signed URL for:', gcsPath);
+      }
+
+      return {
+        ...file.toObject(),
+        url: signedUrl,
+        downloadUrl: signedUrl
+      };
+    }));
+
+    res.json({
+      success: true,
+      data: { files: filesWithUrls },
+    });
+  } catch (error) {
+    console.error('Get files error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get files',
+      error: error.message,
+    });
+  }
+});
+
+/**
  * @route   GET /api/files/project/:projectId
  * @desc    Get files by project ID
  * @access  Private (role-based)
@@ -681,6 +771,69 @@ router.get('/:category/:filename', authenticate, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to download file',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/files/id/:fileId
+ * @desc    Delete file by ID (removes from both DB and GCS)
+ * @access  Private (Employee role)
+ */
+router.delete('/id/:fileId', authenticate, async (req, res) => {
+  try {
+    const { fileId } = req.params;
+
+    console.log('[Files] Deleting file by ID:', fileId);
+
+    if (!mongoose.Types.ObjectId.isValid(fileId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid file ID',
+      });
+    }
+
+    const file = await File.findById(fileId);
+
+    if (!file) {
+      return res.status(404).json({
+        success: false,
+        message: 'File not found',
+      });
+    }
+
+    // Delete from GCS first
+    const GCS_BUCKET = process.env.GCS_BUCKET;
+    try {
+      // Build the GCS path - format: category/projectId/filename or category/filename
+      const projectIdStr = file.project ? file.project.toString() : null;
+      const gcsPath = projectIdStr
+        ? `${file.category}/${projectIdStr}/${file.filename}`
+        : `${file.category}/${file.filename}`;
+
+      console.log('[Files] Deleting from GCS:', gcsPath);
+      await gcsClient.bucket(GCS_BUCKET).file(gcsPath).delete();
+      console.log('[Files] File deleted from GCS');
+    } catch (gcsError) {
+      console.warn('[Files] GCS deletion failed (file may not exist on GCS):', gcsError.message);
+      // Continue with database deletion even if GCS fails
+    }
+
+    // Delete from database
+    await File.findByIdAndDelete(fileId);
+    console.log('[Files] File deleted from database:', fileId);
+
+    res.json({
+      success: true,
+      message: 'File deleted successfully from both storage and database',
+    });
+
+  } catch (error) {
+    console.error('[Files] Delete by ID error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete file',
       error: error.message,
     });
   }

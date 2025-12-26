@@ -19,6 +19,7 @@ import theme from '../../styles/theme';
 
 const VendorDashboardScreen = ({ navigation }) => {
   const { user, logout } = useAuth();
+
   const [dashboardData, setDashboardData] = useState({
     recentActivities: [],
     stats: {
@@ -35,6 +36,7 @@ const VendorDashboardScreen = ({ navigation }) => {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [materialRequests, setMaterialRequests] = useState([]);
 
   useEffect(() => {
     loadDashboardData();
@@ -84,6 +86,7 @@ const VendorDashboardScreen = ({ navigation }) => {
         // Get available requests (unassigned or not yet accepted by this vendor)
         const allRequests = requestsRes.value.data.materialRequests || [];
         stats.pendingRequests = allRequests.length;
+        setMaterialRequests(allRequests); // Store full list
         console.log('[VendorDashboard] Found', stats.pendingRequests, 'material requests available');
       } else if (requestsRes.status === 'rejected') {
         console.error('[VendorDashboard] Material requests API failed:', requestsRes.reason);
@@ -125,8 +128,8 @@ const VendorDashboardScreen = ({ navigation }) => {
       const monthlyTotal = stats.pendingRequests + stats.quotationsSent + stats.invoicesUploaded + (stats.projectsInProgress * 10);
       const monthlyPercentage = 12; // Static for now, can be calculated from historical data
 
-      setDashboardData(prev => ({ 
-        ...prev, 
+      setDashboardData(prev => ({
+        ...prev,
         stats,
         recentActivities,
         monthlyData: {
@@ -151,7 +154,7 @@ const VendorDashboardScreen = ({ navigation }) => {
 
   const handleLogout = () => {
     console.log('Logout initiated');
-    
+
     // For web, use window.confirm; for mobile, use Alert
     if (Platform.OS === 'web') {
       const confirmed = window.confirm('Are you sure you want to logout?');
@@ -165,8 +168,8 @@ const VendorDashboardScreen = ({ navigation }) => {
         'Logout',
         'Are you sure you want to logout?',
         [
-          { 
-            text: 'Cancel', 
+          {
+            text: 'Cancel',
             style: 'cancel',
             onPress: () => console.log('Logout cancelled')
           },
@@ -185,7 +188,7 @@ const VendorDashboardScreen = ({ navigation }) => {
       console.log('Logout confirmed, clearing session...');
       await logout();
       console.log('Logout successful - redirecting to login');
-      
+
       // Force navigation reset to Login screen
       if (navigation) {
         navigation.reset({
@@ -283,8 +286,8 @@ const VendorDashboardScreen = ({ navigation }) => {
             </Text>
             <Text style={styles.dateText}>{getCurrentDate()}</Text>
           </View>
-          <TouchableOpacity 
-            style={styles.profileButton} 
+          <TouchableOpacity
+            style={styles.profileButton}
             onPress={handleLogout}
             activeOpacity={0.7}
           >
@@ -364,7 +367,7 @@ const VendorDashboardScreen = ({ navigation }) => {
               <Text style={styles.viewAllText}>View All</Text>
             </TouchableOpacity>
           </View>
-          
+
           {dashboardData.recentActivities.length > 0 ? (
             dashboardData.recentActivities.map((activity, index) => (
               <ActivityItem key={index} activity={activity} />
@@ -374,6 +377,66 @@ const VendorDashboardScreen = ({ navigation }) => {
               <Feather name="clock" size={48} color={theme.colors.text.muted} />
               <Text style={styles.emptyActivitiesText}>No recent activities</Text>
               <Text style={styles.emptyActivitiesSubtext}>Your recent actions will appear here</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Available Material Requests */}
+        <View style={styles.activitiesSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Available Material Requests</Text>
+            <Text style={{ color: '#3C5046', fontWeight: '600' }}>{materialRequests.length}</Text>
+          </View>
+
+          {materialRequests.length > 0 ? (
+            materialRequests.slice(0, 5).map((request, index) => (
+              <TouchableOpacity key={request._id || index} style={styles.activityItem}>
+                <View style={[styles.activityIconContainer, {
+                  backgroundColor:
+                    request.priority === 'urgent' ? '#FFEBEE' :
+                      request.priority === 'high' ? '#FFF3E0' : '#E8F5E9'
+                }]}>
+                  <Feather
+                    name="package"
+                    size={24}
+                    color={
+                      request.priority === 'urgent' ? '#D32F2F' :
+                        request.priority === 'high' ? '#F57C00' : '#388E3C'
+                    }
+                  />
+                </View>
+                <View style={styles.activityContent}>
+                  <Text style={styles.activityTitle} numberOfLines={1}>{request.title}</Text>
+                  <Text style={styles.activityTime}>
+                    {request.materials?.length || 0} materials • {request.priority?.toUpperCase()}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#999' }}>
+                    Required: {request.requiredBy ? new Date(request.requiredBy).toLocaleDateString() : 'N/A'}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <View style={{
+                    backgroundColor: request.status === 'pending' ? '#FFF3E0' : '#E8F5E9',
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 12
+                  }}>
+                    <Text style={{
+                      fontSize: 10,
+                      color: request.status === 'pending' ? '#F57C00' : '#388E3C',
+                      fontWeight: '600'
+                    }}>
+                      {request.status?.toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))
+          ) : (
+            <View style={styles.emptyActivities}>
+              <Feather name="package" size={48} color={theme.colors.text.muted} />
+              <Text style={styles.emptyActivitiesText}>No material requests available</Text>
+              <Text style={styles.emptyActivitiesSubtext}>New requests will appear here</Text>
             </View>
           )}
         </View>

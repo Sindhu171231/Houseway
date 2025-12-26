@@ -12,9 +12,10 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
+  Modal,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { projectsAPI } from '../../../utils/api';
+import { projectsAPI, filesAPI } from '../../../utils/api';
 import theme from '../../../styles/theme';
 import { StandardCard } from '../../../components/StandardCard';
 // Removed problematic animation components and gradients
@@ -31,8 +32,21 @@ const ProjectDetailsScreen = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
+  const [timelineEvents, setTimelineEvents] = useState([]);
+  const [mediaFiles, setMediaFiles] = useState([]); // For uploaded media
 
-  // Removed all animation values to prevent CSS errors
+  // Image viewer state
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  // Construction phases for timeline display
+  const TIMELINE_STEPS = [
+    { id: 1, name: 'Foundation', description: 'Site preparation and foundation work', icon: '🏗️' },
+    { id: 2, name: 'Structure', description: 'Main building structure and framing', icon: '🧱' },
+    { id: 3, name: 'MEP', description: 'Mechanical, Electrical, and Plumbing', icon: '⚡' },
+    { id: 4, name: 'Finishing', description: 'Interior and exterior finishing', icon: '🎨' },
+    { id: 5, name: 'Handover', description: 'Final inspection and handover', icon: '🔑' },
+  ];
 
   useEffect(() => {
     if (projectId) {
@@ -43,9 +57,27 @@ const ProjectDetailsScreen = () => {
   const loadProjectDetails = async () => {
     try {
       setIsLoading(true);
-      const response = await projectsAPI.getProjectById(projectId);
-      if (response.success) {
-        setProject(response.data.project);
+      // Fetch project, timeline events, and media files together
+      const [projectResponse, timelineResponse, filesResponse] = await Promise.all([
+        projectsAPI.getProjectById(projectId),
+        projectsAPI.getTimeline(projectId).catch(() => ({ success: false, data: { events: [] } })),
+        filesAPI.getProjectFiles(projectId).catch(() => ({ success: false, data: { files: [] } }))
+      ]);
+
+      if (projectResponse.success) {
+        setProject(projectResponse.data.project);
+      }
+
+      if (timelineResponse.success) {
+        setTimelineEvents(timelineResponse.data.events || []);
+      }
+
+      if (filesResponse.success || filesResponse.data) {
+        // Filter for images/videos only
+        const mediaOnly = (filesResponse.data?.files || []).filter(f =>
+          f.mimeType?.startsWith('image/') || f.mimeType?.startsWith('video/')
+        );
+        setMediaFiles(mediaOnly);
       }
     } catch (error) {
       console.error('Error loading project details:', error);
@@ -67,6 +99,36 @@ const ProjectDetailsScreen = () => {
 
   const getStatusColor = (status) => {
     return theme.statusColors.project[status] || theme.colors.primary[500];
+  };
+
+  // Combine project images and uploaded media files for gallery
+  const allMedia = [
+    ...(project?.images || []),
+    ...mediaFiles.map(f => ({
+      url: f.url || f.downloadUrl || f.path,
+      name: f.originalName || f.filename,
+      type: f.mimeType
+    }))
+  ];
+
+  // Filter only images for slideshow (exclude videos)
+  const imageOnlyMedia = allMedia.filter(m => !m.type?.startsWith('video/'));
+
+  const openImageViewer = (index) => {
+    // Find the index in imageOnlyMedia
+    const imageIndex = imageOnlyMedia.findIndex(img => img.url === allMedia[index]?.url);
+    if (imageIndex >= 0) {
+      setCurrentImageIndex(imageIndex);
+      setViewerVisible(true);
+    }
+  };
+
+  const goToPrev = () => {
+    setCurrentImageIndex(prev => (prev > 0 ? prev - 1 : imageOnlyMedia.length - 1));
+  };
+
+  const goToNext = () => {
+    setCurrentImageIndex(prev => (prev < imageOnlyMedia.length - 1 ? prev + 1 : 0));
   };
 
   if (isLoading) {
@@ -122,12 +184,24 @@ const ProjectDetailsScreen = () => {
       </View>
 
       {/* Tabs */}
-      <View style={styles.tabBar}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar}>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'overview' && styles.activeTab]}
           onPress={() => switchTab('overview')}
         >
           <Text style={[styles.tabText, activeTab === 'overview' && styles.activeTabText]}>Overview</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'timeline' && styles.activeTab]}
+          onPress={() => switchTab('timeline')}
+        >
+          <Text style={[styles.tabText, activeTab === 'timeline' && styles.activeTabText]}>Timeline</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'payments' && styles.activeTab]}
+          onPress={() => switchTab('payments')}
+        >
+          <Text style={[styles.tabText, activeTab === 'payments' && styles.activeTabText]}>Payments</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'team' && styles.activeTab]}
@@ -136,12 +210,18 @@ const ProjectDetailsScreen = () => {
           <Text style={[styles.tabText, activeTab === 'team' && styles.activeTabText]}>Team</Text>
         </TouchableOpacity>
         <TouchableOpacity
+          style={[styles.tab, activeTab === 'media' && styles.activeTab]}
+          onPress={() => switchTab('media')}
+        >
+          <Text style={[styles.tabText, activeTab === 'media' && styles.activeTabText]}>Media</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={[styles.tab, activeTab === 'documents' && styles.activeTab]}
           onPress={() => switchTab('documents')}
         >
           <Text style={[styles.tabText, activeTab === 'documents' && styles.activeTabText]}>Files</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
 
       {/* Main Content */}
       <ScrollView
@@ -207,6 +287,14 @@ const ProjectDetailsScreen = () => {
               <Text style={styles.sectionTitle}>Project Information</Text>
               <StandardCard variant="secondary" style={styles.infoCard}>
                 <View style={styles.infoContent}>
+                  {project?.projectId && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Project ID:</Text>
+                      <Text style={[styles.infoValue, { fontWeight: '700', color: '#667eea' }]}>
+                        {project.projectId}
+                      </Text>
+                    </View>
+                  )}
                   <View style={styles.infoRow}>
                     <Text style={styles.infoLabel}>Status:</Text>
                     <View style={{ ...styles.statusBadge, backgroundColor: getStatusColor(project?.status) }}>
@@ -263,6 +351,144 @@ const ProjectDetailsScreen = () => {
           </>
         )}
 
+        {activeTab === 'timeline' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Construction Progress</Text>
+            <Text style={styles.sectionSubtitle}>Track your project's journey through 5 key phases</Text>
+
+            {TIMELINE_STEPS.map((step, index) => {
+              // Check if step has events and get status
+              const stepEvents = timelineEvents.filter(event =>
+                event.title?.toLowerCase().includes(step.name.toLowerCase())
+              );
+              const hasCompleted = stepEvents.some(e => e.status === 'completed');
+              const hasInProgress = stepEvents.some(e => e.status === 'in-progress');
+              const status = hasCompleted ? 'completed' : hasInProgress ? 'in-progress' : 'pending';
+
+              const statusColors = {
+                completed: '#388E3C',
+                'in-progress': '#B8860B',
+                pending: '#9E9E9E'
+              };
+
+              return (
+                <View key={step.id} style={styles.timelineStepContainer}>
+                  <View style={styles.timelineIndicator}>
+                    <View style={[styles.timelineCircle, { backgroundColor: statusColors[status] }]}>
+                      {status === 'completed' ? (
+                        <Text style={styles.timelineCircleIcon}>✓</Text>
+                      ) : (
+                        <Text style={styles.timelineCircleText}>{step.id}</Text>
+                      )}
+                    </View>
+                    {index < TIMELINE_STEPS.length - 1 && (
+                      <View style={[styles.timelineLine, { backgroundColor: status === 'completed' ? '#388E3C' : '#E0E0E0' }]} />
+                    )}
+                  </View>
+                  <View style={[styles.timelineContent, status === 'in-progress' && styles.timelineContentActive]}>
+                    <View style={styles.timelineHeader}>
+                      <Text style={styles.timelineIcon}>{step.icon}</Text>
+                      <Text style={styles.timelineStepName}>{step.name}</Text>
+                      <View style={[styles.timelineStatusBadge, { backgroundColor: statusColors[status] + '20' }]}>
+                        <Text style={[styles.timelineStatusText, { color: statusColors[status] }]}>
+                          {status.replace('-', ' ').toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.timelineDescription}>{step.description}</Text>
+                    {stepEvents.length > 0 && (
+                      <View style={styles.timelineUpdates}>
+                        {stepEvents.slice(0, 2).map((event, i) => (
+                          <View key={i} style={styles.timelineUpdate}>
+                            <Text style={styles.timelineUpdateTitle}>{event.title}</Text>
+                            <Text style={styles.timelineUpdateDate}>
+                              {new Date(event.createdAt).toLocaleDateString()}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {activeTab === 'payments' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Payment Schedule</Text>
+            <Text style={styles.sectionSubtitle}>Your payment deadlines and status</Text>
+
+            {/* Payment Summary */}
+            <StandardCard variant="accent" style={styles.paymentSummaryCard}>
+              <View style={styles.paymentSummaryContent}>
+                <View style={styles.paymentSummaryRow}>
+                  <Text style={styles.paymentSummaryLabel}>Total Budget</Text>
+                  <Text style={styles.paymentSummaryValue}>
+                    ₹{project?.budget?.estimated?.toLocaleString() || '0'}
+                  </Text>
+                </View>
+                <View style={styles.paymentSummaryDivider} />
+                <View style={styles.paymentSummaryRow}>
+                  <Text style={styles.paymentSummaryLabel}>Amount Paid</Text>
+                  <Text style={[styles.paymentSummaryValue, { color: '#388E3C' }]}>
+                    ₹{project?.paymentSchedule?.filter(p => p.status === 'paid')
+                      .reduce((sum, p) => sum + (p.amount || 0), 0).toLocaleString() || '0'}
+                  </Text>
+                </View>
+              </View>
+            </StandardCard>
+
+            {/* Payment Schedule List */}
+            <Text style={[styles.sectionTitle, { fontSize: 18, marginTop: 20 }]}>Upcoming Deadlines</Text>
+            {project?.paymentSchedule?.length > 0 ? (
+              project.paymentSchedule.map((payment, index) => (
+                <View key={index} style={styles.paymentItem}>
+                  <View style={styles.paymentItemLeft}>
+                    <View style={[styles.paymentStatusDot, {
+                      backgroundColor: payment.status === 'paid' ? '#388E3C' :
+                        payment.status === 'overdue' ? '#D32F2F' : '#B8860B'
+                    }]} />
+                    <View>
+                      <Text style={styles.paymentInstallment}>
+                        Installment {index + 1}: {payment.description || 'Payment'}
+                      </Text>
+                      <Text style={styles.paymentDueDate}>
+                        Due: {payment.dueDate ? new Date(payment.dueDate).toLocaleDateString() : 'Not set'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.paymentItemRight}>
+                    <Text style={styles.paymentAmount}>₹{payment.amount?.toLocaleString() || '0'}</Text>
+                    <View style={[styles.paymentStatusBadge, {
+                      backgroundColor: payment.status === 'paid' ? '#388E3C20' :
+                        payment.status === 'overdue' ? '#D32F2F20' : '#B8860B20'
+                    }]}>
+                      <Text style={[styles.paymentStatusText, {
+                        color: payment.status === 'paid' ? '#388E3C' :
+                          payment.status === 'overdue' ? '#D32F2F' : '#B8860B'
+                      }]}>
+                        {payment.status?.toUpperCase() || 'PENDING'}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>No payment schedule set yet.</Text>
+            )}
+
+            {/* View All Invoices Button */}
+            <TouchableOpacity
+              style={styles.paymentLinkBtn}
+              onPress={() => navigation.navigate('Projects', { screen: 'Payments', params: { projectId: project._id } })}
+            >
+              <Text style={styles.paymentLinkText}>View All Invoices & Payment History</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {activeTab === 'team' && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Meet Your Design Team</Text>
@@ -314,6 +540,44 @@ const ProjectDetailsScreen = () => {
           </View>
         )}
 
+        {activeTab === 'media' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Project Media</Text>
+            <Text style={styles.sectionSubtitle}>
+              {allMedia.length} {allMedia.length === 1 ? 'file' : 'files'} uploaded
+            </Text>
+            <View style={styles.imageGrid}>
+              {allMedia.length > 0 ? (
+                allMedia.map((media, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.gridImageContainer}
+                    onPress={() => !media.type?.startsWith('video/') && openImageViewer(index)}
+                  >
+                    {media.type?.startsWith('video/') ? (
+                      <View style={[styles.gridImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#222' }]}>
+                        <Text style={{ fontSize: 24 }}>▶️</Text>
+                        <Text style={{ color: '#fff', fontSize: 10, marginTop: 4 }}>Video</Text>
+                      </View>
+                    ) : (
+                      <Image source={{ uri: media.url }} style={styles.gridImage} />
+                    )}
+                    <Text style={styles.gridImageLabel} numberOfLines={1}>
+                      {media.name || `File ${index + 1}`}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateIcon}>📷</Text>
+                  <Text style={styles.emptyText}>No media uploaded yet</Text>
+                  <Text style={styles.emptySubText}>Progress photos and videos will appear here</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
         {activeTab === 'documents' && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Project Documents</Text>
@@ -334,16 +598,31 @@ const ProjectDetailsScreen = () => {
               <Text style={styles.emptyText}>No documents shared yet.</Text>
             )}
 
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Project Images</Text>
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Project Media</Text>
+            <Text style={styles.sectionSubtitle}>
+              {(project?.images?.length || 0) + mediaFiles.length} files uploaded
+            </Text>
             <View style={styles.imageGrid}>
-              {project?.images?.length > 0 ? (
-                project.images.map((img, index) => (
-                  <TouchableOpacity key={index} style={styles.gridImageContainer}>
-                    <Image source={{ uri: img.url }} style={styles.gridImage} />
+              {/* Display combined media with click to view */}
+              {allMedia.length > 0 ? (
+                allMedia.map((media, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.gridImageContainer}
+                    onPress={() => !media.type?.startsWith('video/') && openImageViewer(index)}
+                  >
+                    {media.type?.startsWith('video/') ? (
+                      <View style={[styles.gridImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#222' }]}>
+                        <Text style={{ fontSize: 24 }}>▶️</Text>
+                        <Text style={{ color: '#fff', fontSize: 10, marginTop: 4 }}>Video</Text>
+                      </View>
+                    ) : (
+                      <Image source={{ uri: media.url }} style={styles.gridImage} />
+                    )}
                   </TouchableOpacity>
                 ))
               ) : (
-                <Text style={styles.emptyText}>No progress images uploaded yet.</Text>
+                <Text style={styles.emptyText}>No progress media uploaded yet.</Text>
               )}
             </View>
 
@@ -356,6 +635,110 @@ const ProjectDetailsScreen = () => {
           </View>
         )}
       </ScrollView>
+
+      {/* Fullscreen Image Viewer Modal */}
+      <Modal
+        visible={viewerVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setViewerVisible(false)}
+      >
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.95)',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}>
+          {/* Close Button */}
+          <TouchableOpacity
+            style={{
+              position: 'absolute',
+              top: Platform.OS === 'ios' ? 50 : 30,
+              right: 20,
+              zIndex: 10,
+              backgroundColor: 'rgba(255,255,255,0.2)',
+              borderRadius: 20,
+              padding: 10,
+            }}
+            onPress={() => setViewerVisible(false)}
+          >
+            <Text style={{ color: '#fff', fontSize: 18 }}>✕</Text>
+          </TouchableOpacity>
+
+          {/* Image Counter */}
+          <View style={{
+            position: 'absolute',
+            top: Platform.OS === 'ios' ? 55 : 35,
+            left: 20,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderRadius: 15,
+          }}>
+            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>
+              {currentImageIndex + 1} / {imageOnlyMedia.length}
+            </Text>
+          </View>
+
+          {/* Main Image */}
+          {imageOnlyMedia.length > 0 && (
+            <Image
+              source={{ uri: imageOnlyMedia[currentImageIndex]?.url }}
+              style={{
+                width: '90%',
+                height: '70%',
+                resizeMode: 'contain',
+              }}
+            />
+          )}
+
+          {/* Image Name */}
+          <Text style={{
+            color: '#fff',
+            fontSize: 14,
+            marginTop: 15,
+            textAlign: 'center',
+            paddingHorizontal: 20,
+          }}>
+            {imageOnlyMedia[currentImageIndex]?.name || `Image ${currentImageIndex + 1}`}
+          </Text>
+
+          {/* Navigation Buttons */}
+          {imageOnlyMedia.length > 1 && (
+            <>
+              {/* Previous Button */}
+              <TouchableOpacity
+                style={{
+                  position: 'absolute',
+                  left: 10,
+                  top: '50%',
+                  backgroundColor: 'rgba(255,255,255,0.2)',
+                  borderRadius: 25,
+                  padding: 12,
+                }}
+                onPress={goToPrev}
+              >
+                <Text style={{ color: '#fff', fontSize: 24 }}>‹</Text>
+              </TouchableOpacity>
+
+              {/* Next Button */}
+              <TouchableOpacity
+                style={{
+                  position: 'absolute',
+                  right: 10,
+                  top: '50%',
+                  backgroundColor: 'rgba(255,255,255,0.2)',
+                  borderRadius: 25,
+                  padding: 12,
+                }}
+                onPress={goToNext}
+              >
+                <Text style={{ color: '#fff', fontSize: 24 }}>›</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -732,6 +1115,230 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     marginTop: 20,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+    marginTop: -10,
+  },
+  // Timeline styles
+  timelineStepContainer: {
+    flexDirection: 'row',
+    marginBottom: 20,
+  },
+  timelineIndicator: {
+    alignItems: 'center',
+    marginRight: 15,
+  },
+  timelineCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  timelineCircleText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  timelineCircleIcon: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 18,
+  },
+  timelineLine: {
+    width: 3,
+    flex: 1,
+    minHeight: 60,
+    marginTop: 5,
+  },
+  timelineContent: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 15,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  timelineContentActive: {
+    borderColor: '#B8860B',
+    borderWidth: 2,
+  },
+  timelineHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  timelineIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  timelineStepName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+    flex: 1,
+  },
+  timelineStatusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  timelineStatusText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  timelineDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 10,
+  },
+  timelineUpdates: {
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingTop: 10,
+  },
+  timelineUpdate: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 5,
+  },
+  timelineUpdateTitle: {
+    fontSize: 13,
+    color: '#555',
+    flex: 1,
+  },
+  timelineUpdateDate: {
+    fontSize: 12,
+    color: '#888',
+  },
+  // Payment styles
+  paymentSummaryCard: {
+    marginBottom: 15,
+  },
+  paymentSummaryContent: {
+    padding: 20,
+  },
+  paymentSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  paymentSummaryLabel: {
+    fontSize: 16,
+    color: '#fff',
+    opacity: 0.9,
+  },
+  paymentSummaryValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  paymentSummaryDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    marginVertical: 15,
+  },
+  paymentItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  paymentItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  paymentStatusDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 12,
+  },
+  paymentInstallment: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  paymentDueDate: {
+    fontSize: 12,
+    color: '#888',
+  },
+  paymentItemRight: {
+    alignItems: 'flex-end',
+  },
+  paymentAmount: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 4,
+  },
+  paymentStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  paymentStatusText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  // Media Grid Styles
+  imageGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 10,
+    marginHorizontal: -5,
+  },
+  gridImageContainer: {
+    width: '31%',
+    margin: '1%',
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#f5f5f5',
+  },
+  gridImage: {
+    width: '100%',
+    height: 100,
+    borderRadius: 10,
+  },
+  gridImageLabel: {
+    fontSize: 11,
+    color: '#666',
+    textAlign: 'center',
+    paddingVertical: 5,
+    paddingHorizontal: 3,
+    backgroundColor: '#fafafa',
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: '#888',
+    marginTop: -10,
+    marginBottom: 10,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+    width: '100%',
+  },
+  emptyStateIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  emptySubText: {
+    fontSize: 13,
+    color: '#999',
+    marginTop: 5,
   },
 });
 

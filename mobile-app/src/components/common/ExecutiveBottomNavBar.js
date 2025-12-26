@@ -2,59 +2,29 @@ import React from 'react';
 import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAttendance } from '../../context/AttendanceContext';
-import { useAuth } from '../../context/AuthContext';
 import { Alert, Platform } from 'react-native';
 
 // Beige Theme Colors
 const COLORS = {
-    primary: '#B8860B',      // Dark Golden Rod
+    primary: '#B8860B',
     background: '#F5F5F0',
     cardBg: '#FFFFFF',
     textMuted: '#666666',
 };
 
-const BottomNavBar = ({ navigation, activeTab = 'home' }) => {
+// Simplified BottomNavBar for Executive Team - No Add Client/Project/Invoice access
+const ExecutiveBottomNavBar = ({ navigation, activeTab = 'dashboard' }) => {
     const { isCheckedIn } = useAttendance();
-    const { user } = useAuth();
 
-    // Different tabs based on subRole
-    const designTeamTabs = [
-        { id: 'home', icon: 'home', label: 'Home', route: 'HomeDashboard' },
-        { id: 'clients', icon: 'users', label: 'Clients', route: 'ClientsList' },
-        { id: 'projects', icon: 'briefcase', label: 'Projects', route: 'ProjectList' },
-        { id: 'settings', icon: 'settings', label: 'Settings', route: 'Settings' },
-    ];
-
-    const executionTeamTabs = [
-        { id: 'home', icon: 'home', label: 'Dashboard', route: 'ExecutiveDashboard' },
+    const tabs = [
+        { id: 'dashboard', icon: 'home', label: 'Home', route: 'ExecutiveDashboard' },
         { id: 'projects', icon: 'briefcase', label: 'Projects', route: 'ExecutiveProjectList' },
-        { id: 'settings', icon: 'settings', label: 'Settings', route: 'Settings' },
+        { id: 'profile', icon: 'user', label: 'Profile', route: 'Profile' },
     ];
-
-    const vendorTeamTabs = [
-        { id: 'home', icon: 'home', label: 'Dashboard', route: 'VendorTeamDashboard' },
-        { id: 'settings', icon: 'settings', label: 'Settings', route: 'Settings' },
-    ];
-
-    // Select tabs based on subRole
-    const getAllTabs = () => {
-        if (user?.subRole === 'executionTeam') return executionTeamTabs;
-        if (user?.subRole === 'vendorTeam') return vendorTeamTabs;
-        return designTeamTabs;
-    };
-
-    const allTabs = getAllTabs();
-
-    // Filter tabs for employees who are not checked in
-    const tabs = (user?.role === 'employee' && !isCheckedIn)
-        ? allTabs.filter(tab => tab.id === 'settings')
-        : allTabs;
 
     const handlePress = (tab) => {
         if (tab.id !== activeTab) {
-            // Protection for employees
-            // Protection for employees
-            if (user?.role === 'employee' && !isCheckedIn && tab.id !== 'settings') {
+            if (!isCheckedIn && tab.id !== 'profile') {
                 if (Platform.OS === 'web') {
                     alert('⏳ Access Denied: Please Check-In first.');
                 } else {
@@ -143,4 +113,4 @@ const styles = StyleSheet.create({
     },
 });
 
-export default BottomNavBar;
+export default ExecutiveBottomNavBar;
